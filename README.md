@@ -12,7 +12,8 @@ instalovat (jen `ping`, `curl`, `bash`) a běží na pozadí.
 |--------|-----------|
 | `netmon.sh` | Vlastní měřicí smyčka (běží na pozadí). Konfigurace je nahoře v souboru. |
 | `ctl.sh` | Ovládání: `start` / `stop` / `status`. |
-| `report.sh` | Vypíše souhrn z nasbíraných dat. |
+| `report.sh` | Vypíše textový souhrn z nasbíraných dat. |
+| `report-html.sh` | Vygeneruje **vizuální HTML přehled s grafy** (`report.html`). |
 | `latency.csv` | Log pingů (vzniká za běhu). |
 | `speed.csv` | Log měření rychlosti (vzniká za běhu). |
 | `netmon.run.log` | Provozní výstup procesu (pro ladění). |
@@ -22,13 +23,27 @@ instalovat (jen `ping`, `curl`, `bash`) a běží na pozadí.
 
 ## Ovládání
 
+Měření běží jako **systemd user služba** `netmon.service` (spustí se samo i po
+rebootu, viz níže). Ovládá se přes systemd:
+
+```bash
+systemctl --user status netmon.service     # běží?
+systemctl --user stop    netmon.service     # zastavit
+systemctl --user start   netmon.service     # spustit
+systemctl --user restart netmon.service     # po změně konfigurace v netmon.sh
+```
+
+Vyhodnocení (lze kdykoliv za běhu):
+
 ```bash
 cd ~/netmon
-./ctl.sh start      # spustí měření na pozadí (přežije zavření terminálu)
-./ctl.sh status     # běží? kolik je nasbíráno záznamů
-./ctl.sh stop       # ukončí měření
-./report.sh         # souhrnný report z nasbíraných dat (lze kdykoliv za běhu)
+./report.sh         # textový souhrn do terminálu
+./report-html.sh    # vizuální HTML přehled → report.html
+xdg-open report.html
 ```
+
+> Pozn.: `ctl.sh` (start/stop/status přes `nohup`) je alternativa pro ruční
+> spuštění bez systemd. **Nepoužívej oboje zároveň**, ať neběží dvě instance.
 
 ---
 
@@ -120,9 +135,18 @@ awk -F, '$2=="google" && $5+0>50 {print $1, $5" ms"}' latency.csv
 ```
 
 ### Grafy
-`latency.csv` i `speed.csv` jsou běžné CSV — dají se otevřít v LibreOffice
-Calc / Excel a vykreslit (latence v čase, rychlost v čase). Pro latenci doporučuji
-filtrovat na jeden cíl (`target`), ať se křivky nepřekrývají.
+Nejjednodušší je vizuální HTML přehled:
+```bash
+./report-html.sh && xdg-open report.html
+```
+Vygeneruje `report.html` se souhrnnými kartami (ztráty, latence, rychlost) a
+třemi interaktivními grafy: **latence v čase**, **ztráta paketů v čase** a
+**rychlost v čase**. Přegeneruj kdykoliv pro aktuální data. Soubor je samostatný
+(grafy přes Chart.js z CDN — k zobrazení je potřeba připojení k internetu).
+
+Případně `latency.csv` i `speed.csv` jsou běžné CSV — dají se otevřít i v
+LibreOffice Calc / Excel. Pro latenci filtruj na jeden cíl (`target`), ať se
+křivky nepřekrývají.
 
 ---
 
@@ -145,8 +169,9 @@ sniž `SPEED_BYTES` nebo prodluž `SPEED_INTERVAL`.
 
 ## Poznámky a omezení
 
-- **Po rebootu se měření samo nespustí.** Pokud počítač během sběru restartuješ,
-  spusť znovu `./ctl.sh start` (nebo si nech dodělat autostart přes systemd / `@reboot` cron).
+- **Autostart po rebootu je zapnutý** přes systemd user službu `netmon.service`
+  + `loginctl enable-linger`, takže měření jede i po restartu bez přihlášení.
+  Vypnout autostart: `systemctl --user disable --now netmon.service`.
 - Některé veřejné IP (např. `1.1.1.1`) v této síti **neodpovídají na ICMP** —
   proto je v cílech Quad9 (9.9.9.9) místo Cloudflare. Když přidáváš vlastní cíl,
   ověř, že na ping reaguje, jinak budeš mít falešných 100 % ztrát.

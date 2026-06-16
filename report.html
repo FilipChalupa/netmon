@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>netmon — přehled kvality připojení</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--mut:#94a3b8;--fg:#e2e8f0;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--accent:#38bdf8}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;padding:24px}
+  h1{margin:0 0 4px;font-size:24px}
+  .sub{color:var(--mut);margin-bottom:24px;font-size:13px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:28px}
+  .card{background:var(--card);border-radius:12px;padding:16px 18px;border:1px solid #334155}
+  .card h3{margin:0 0 10px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  .metric{display:flex;justify-content:space-between;margin:4px 0;font-size:14px}
+  .metric .v{font-variant-numeric:tabular-nums;font-weight:600}
+  .big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .ok{background:rgba(34,197,94,.15);color:var(--ok)}
+  .warn{background:rgba(245,158,11,.15);color:var(--warn)}
+  .bad{background:rgba(239,68,68,.15);color:var(--bad)}
+  .panel{background:var(--card);border-radius:12px;padding:18px;margin-bottom:22px;border:1px solid #334155}
+  .panel h2{margin:0 0 14px;font-size:16px}
+  canvas{max-height:320px}
+  .foot{color:var(--mut);font-size:12px;text-align:center;margin-top:30px}
+</style>
+</head>
+<body>
+  <h1>📡 Kvalita připojení</h1>
+  <div class="sub" id="period"></div>
+  <div class="cards" id="cards"></div>
+
+  <div class="panel"><h2>Latence v čase (ms)</h2><canvas id="latChart"></canvas></div>
+  <div class="panel"><h2>Ztráta paketů (% za minutu)</h2><canvas id="lossChart"></canvas></div>
+  <div class="panel"><h2>Rychlost stahování (Mbit/s)</h2><canvas id="spdChart"></canvas></div>
+
+  <div class="foot">Vygenerováno: 2026-06-16 16:25:29 CEST · netmon</div>
+
+<script>
+const SUMMARY = [{"target":"google","samples":1632,"loss":0.00,"avg":1.91,"min":1.09,"max":34.10},{"target":"quad9","samples":1631,"loss":0.25,"avg":7.21,"min":6.30,"max":42.50},{"target":"gateway","samples":1631,"loss":0.00,"avg":0.29,"min":0.17,"max":4.89}];
+const LAT = {"labels":["2026-06-16T15:29","2026-06-16T15:30","2026-06-16T15:31","2026-06-16T15:32","2026-06-16T15:33","2026-06-16T15:34","2026-06-16T15:35","2026-06-16T15:36","2026-06-16T15:37","2026-06-16T15:38","2026-06-16T15:39","2026-06-16T15:40","2026-06-16T15:41","2026-06-16T15:42","2026-06-16T15:43","2026-06-16T15:44","2026-06-16T15:45","2026-06-16T15:46","2026-06-16T15:47","2026-06-16T15:48","2026-06-16T15:49","2026-06-16T15:50","2026-06-16T15:51","2026-06-16T15:52","2026-06-16T15:53","2026-06-16T15:54","2026-06-16T15:55","2026-06-16T15:56","2026-06-16T15:57","2026-06-16T15:58","2026-06-16T15:59","2026-06-16T16:00","2026-06-16T16:01","2026-06-16T16:02","2026-06-16T16:03","2026-06-16T16:04","2026-06-16T16:05","2026-06-16T16:06","2026-06-16T16:07","2026-06-16T16:08","2026-06-16T16:09","2026-06-16T16:10","2026-06-16T16:11","2026-06-16T16:12","2026-06-16T16:13","2026-06-16T16:14","2026-06-16T16:15","2026-06-16T16:16","2026-06-16T16:17","2026-06-16T16:18","2026-06-16T16:19","2026-06-16T16:20","2026-06-16T16:21","2026-06-16T16:22","2026-06-16T16:23","2026-06-16T16:24","2026-06-16T16:25"],"targets":{"google":{"rtt":[1.98077,1.58,1.58103,1.66433,1.5469,1.5969,1.59034,1.75828,1.812,1.54586,1.66483,1.50821,1.729,1.65724,1.61034,1.52621,1.629,2.99414,1.65034,1.7131,1.58138,1.81069,2.05067,1.64931,1.61724,1.82833,1.64276,1.52379,1.555,1.70828,1.807,1.63586,1.58,1.64,1.56828,1.61067,1.76241,2.86379,1.893,1.62036,1.73759,1.85724,1.95567,2.01679,1.86103,1.65828,1.59633,1.68172,5.79069,1.91286,1.62379,1.66448,6.68536,1.78,1.79069,2.15276,1.70867],"loss":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"quad9":{"rtt":[6.95333,6.89241,6.85448,6.88033,6.90862,6.91966,6.89862,6.82414,6.997,7.02241,6.90931,6.90259,6.94367,6.86172,6.89034,6.88552,7.005,7.76828,6.89724,6.95483,6.90345,7.14276,7.427,6.95621,6.94276,7.055,7.17414,6.93862,6.75967,6.87966,7.159,6.83828,6.86433,6.83828,6.8131,6.89367,7.10448,8.00966,7.11667,6.87148,7.12345,6.95103,7.098,7.40222,6.89793,7.51897,7.24733,7.08793,13.1114,7.41464,7.15517,6.92655,11.0181,7.15033,7.00828,7.11828,7.03],"loss":[0,0,0,0,0,0,0,0,0,0,0,3.57143,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3.57143,0,0,0,3.57143,0,0,0,0,0,0,0,0,3.57143,0,0,0,0]},"gateway":{"rtt":[0.263583,0.26869,0.257862,0.281233,0.264621,0.276897,0.257207,0.295793,0.281033,0.371276,0.260897,0.267429,0.326033,0.259862,0.26231,0.264724,0.257133,0.296862,0.270759,0.260414,0.256931,0.341379,0.351133,0.27331,0.290448,0.315667,0.398,0.283379,0.3033,0.272793,0.267833,0.266172,0.262133,0.264069,0.268207,0.2922,0.437552,0.282759,0.257767,0.369214,0.285207,0.272414,0.282133,0.292893,0.425069,0.325207,0.2787,0.277414,0.289931,0.276393,0.283759,0.272,0.281821,0.272067,0.269379,0.266345,0.400067],"loss":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}};
+const SPD = {"labels":["2026-06-16T15:29","2026-06-16T16:18"],"mbps":[137.79,123.84]};
+const META = {"first":"2026-06-16T15:29:34+02:00","last":"2026-06-16T16:25:29+02:00"};
+const COLORS = {gateway:'#38bdf8', quad9:'#a78bfa', google:'#f472b6', _0:'#34d399', _1:'#fbbf24', _2:'#fb7185'};
+const colorFor = (name,i)=> COLORS[name] || COLORS['_'+(i%3)];
+
+// Období
+document.getElementById('period').textContent =
+  'Měřeno: ' + (META.first||'?').replace('T',' ') + '  →  ' + (META.last||'?').replace('T',' ');
+
+// Karty
+const cardsEl = document.getElementById('cards');
+SUMMARY.sort((a,b)=>a.target.localeCompare(b.target)).forEach(s=>{
+  const cls = s.loss>1 ? 'bad' : s.loss>0.1 ? 'warn' : 'ok';
+  const lbl = s.loss>1 ? 'problém' : s.loss>0.1 ? 'drobné ztráty' : 'OK';
+  cardsEl.insertAdjacentHTML('beforeend', `
+    <div class="card">
+      <h3>${s.target}</h3>
+      <div class="metric"><span>Ztráta paketů</span><span class="pill ${cls}">${s.loss.toFixed(2)}% · ${lbl}</span></div>
+      <div class="metric"><span>Latence avg</span><span class="v">${s.avg.toFixed(1)} ms</span></div>
+      <div class="metric"><span>Latence min / max</span><span class="v">${s.min.toFixed(1)} / ${s.max.toFixed(1)} ms</span></div>
+      <div class="metric"><span>Vzorků</span><span class="v">${s.samples.toLocaleString('cs')}</span></div>
+    </div>`);
+});
+
+// Karta rychlosti
+if (SPD.mbps.length){
+  const m=SPD.mbps, avg=m.reduce((a,b)=>a+b,0)/m.length, mn=Math.min(...m), mx=Math.max(...m);
+  cardsEl.insertAdjacentHTML('beforeend', `
+    <div class="card">
+      <h3>rychlost ⬇</h3>
+      <div class="big">${avg.toFixed(0)} <span style="font-size:14px;color:var(--mut)">Mbit/s avg</span></div>
+      <div class="metric"><span>min / max</span><span class="v">${mn.toFixed(0)} / ${mx.toFixed(0)}</span></div>
+      <div class="metric"><span>měření</span><span class="v">${m.length}</span></div>
+    </div>`);
+}
+
+const baseOpts = (yLabel)=>({
+  responsive:true, interaction:{mode:'index',intersect:false},
+  scales:{
+    x:{ticks:{color:'#94a3b8',maxTicksLimit:12,maxRotation:0},grid:{color:'#1e293b'}},
+    y:{title:{display:true,text:yLabel,color:'#94a3b8'},ticks:{color:'#94a3b8'},grid:{color:'#1e293b'},beginAtZero:true}
+  },
+  plugins:{legend:{labels:{color:'#e2e8f0'}}},
+  elements:{point:{radius:0}}, spanGaps:true
+});
+
+// Latence
+new Chart(document.getElementById('latChart'), {
+  type:'line',
+  data:{ labels:LAT.labels, datasets:Object.keys(LAT.targets).map((t,i)=>({
+    label:t, data:LAT.targets[t].rtt, borderColor:colorFor(t,i),
+    backgroundColor:colorFor(t,i), borderWidth:1.6, tension:.25 })) },
+  options: baseOpts('ms')
+});
+
+// Ztráty
+new Chart(document.getElementById('lossChart'), {
+  type:'line',
+  data:{ labels:LAT.labels, datasets:Object.keys(LAT.targets).map((t,i)=>({
+    label:t, data:LAT.targets[t].loss, borderColor:colorFor(t,i),
+    backgroundColor:colorFor(t,i), borderWidth:1.6, tension:.25, fill:false })) },
+  options: baseOpts('% ztrát / min')
+});
+
+// Rychlost
+new Chart(document.getElementById('spdChart'), {
+  type:'line',
+  data:{ labels:SPD.labels, datasets:[{
+    label:'download', data:SPD.mbps, borderColor:'#38bdf8',
+    backgroundColor:'rgba(56,189,248,.15)', borderWidth:2, tension:.3, fill:true, pointRadius:3 }] },
+  options: baseOpts('Mbit/s')
+});
+</script>
+</body>
+</html>
