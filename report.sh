@@ -36,5 +36,20 @@ END{ if(n) printf "měření: %d   avg: %.1f   min: %.1f   max: %.1f\n", n, s/n,
      else print "zatím žádná úspěšná měření" }' "$SPD"
 fails=$(awk -F, 'NR>1 && $2==""{c++}END{print c+0}' "$SPD")
 echo "neúspěšná měření rychlosti: $fails"
+
+RCH="$DIR/reach.csv"
+if [ -f "$RCH" ]; then
+  echo
+  echo "--- Dosažitelnost služeb (DNS / TCP / TLS, ms) ---"
+  awk -F, 'NR>1 && $6=="ok"{ d+=$2;t+=$3;l+=$4;n++ } NR>1 && $6=="FAIL"{f++}
+    END{ if(n) printf "úspěšných: %d   avg DNS: %.1f   avg TCP: %.1f   avg TLS: %.1f\n", n, d/n, t/n, l/n
+         printf "selhání (nedostupné služby): %d\n", f+0 }' "$RCH"
+fi
+
+if [ -x "$DIR/events.sh" ]; then
+  echo
+  "$DIR/events.sh" | sed -n '/=====/,$p'
+fi
+
 echo
-echo "Tip: detail si otevři v tabulkách — latency.csv a speed.csv jsou běžné CSV."
+echo "Tip: vizuální přehled → ./report-html.sh && xdg-open report.html"

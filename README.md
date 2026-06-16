@@ -14,8 +14,13 @@ instalovat (jen `ping`, `curl`, `bash`) a běží na pozadí.
 | `ctl.sh` | Ovládání: `start` / `stop` / `status`. |
 | `report.sh` | Vypíše textový souhrn z nasbíraných dat. |
 | `report-html.sh` | Vygeneruje **vizuální HTML přehled s grafy** (`report.html`). |
+| `events.sh` | Odvodí z pingů **čitelný seznam výpadků** (`events.csv`). |
+| `reset.sh` | Vyčistí historické logy a začne čisté měření (se zálohou). |
 | `latency.csv` | Log pingů (vzniká za běhu). |
 | `speed.csv` | Log měření rychlosti (vzniká za běhu). |
+| `reach.csv` | Log dosažitelnosti služeb — DNS / TCP / TLS (vzniká za běhu). |
+| `events.csv` | Odvozený seznam výpadků (vytváří `events.sh`). |
+| `archiv/` | Zálohy starých logů (vytváří `reset.sh`). |
 | `netmon.run.log` | Provozní výstup procesu (pro ladění). |
 | `netmon.pid` | PID běžícího procesu (vytváří `ctl.sh`). |
 
@@ -37,9 +42,21 @@ Vyhodnocení (lze kdykoliv za běhu):
 
 ```bash
 cd ~/netmon
-./report.sh         # textový souhrn do terminálu
+./report.sh         # textový souhrn do terminálu (latence, ztráty, rychlost, dosažitelnost, výpadky)
+./events.sh         # jen seznam výpadků → events.csv + souhrn
 ./report-html.sh    # vizuální HTML přehled → report.html
 xdg-open report.html
+```
+
+### Vyčištění a nové měření
+
+Když chceš začít čistě (nová série měření), použij `reset.sh`. Stará data
+zazálohuje do `archiv/<datum>/`, vyprázdní logy a měření zase rozběhne:
+
+```bash
+./reset.sh            # zeptá se na potvrzení, stará data zazálohuje
+./reset.sh --force    # bez ptaní (ale se zálohou)
+./reset.sh --purge    # smaže úplně bez zálohy (opatrně!)
 ```
 
 > Pozn.: `ctl.sh` (start/stop/status přes `nohup`) je alternativa pro ruční
@@ -63,10 +80,25 @@ Pinguje tři cíle, aby šlo **rozlišit, kde problém vzniká**:
 - Gateway jede, ale vypadnou **quad9 i google současně** → problém je u providera / na cestě ven.
 - Vypadne jen **jeden** z internetových cílů → spíš problém daného cíle nebo cesty k němu, ne tvého připojení.
 
+### Dosažitelnost služeb (1×/30 s) — `reach.csv`
+Ping (ICMP) routery často odsouvají stranou a leckdy „pingá", i když reálné
+služby nejedou. Tahle sonda proto přes `curl` měří **čas DNS resolu, TCP
+connectu a TLS handshaku** na reálný web (`google.com/generate_204`). Zachytí
+výpadky typu *„ping jede, ale internet nefunguje"* — typicky padlé DNS nebo
+zahozený provoz. `status=FAIL` = služba byla nedostupná.
+
 ### Rychlost (1×/h) — `speed.csv`
 Stáhne ~50 MB z Cloudflare (`speed.cloudflare.com`) a změří propustnost.
 Spouští se hned po startu a pak každou hodinu, takže vidíš **kolísání rychlosti
 v čase** (např. večerní špička vs. noc).
+
+### Výpadky (odvozené) — `events.csv`
+`events.sh` projde `latency.csv` a slepí jednotlivé ztráty do **souvislých
+událostí** se začátkem, koncem, délkou a rozsahem:
+- `scope=local` — nedostupná brána → problém na **tvé straně** (kabel/switch/router).
+- `scope=internet` — brána OK, ale **oba** veřejné cíle nedostupné → problém **u providera**.
+
+Ideální podklad pro reklamaci: pár řádků s přesnými časy místo statisíců pingů.
 
 ---
 
@@ -89,6 +121,21 @@ timestamp,down_mbps,bytes,seconds,http_code
 ```
 - `down_mbps` = rychlost stahování v **megabitech/s** (prázdné = test selhal).
 - `http_code` = `200` při úspěchu, jinak `FAIL` nebo HTTP kód chyby.
+
+### `reach.csv`
+```
+timestamp,dns_ms,tcp_ms,tls_ms,http_code,status
+2026-06-16T17:00:45+02:00,4.6,1.8,39.1,204,ok
+```
+- `dns_ms` / `tcp_ms` / `tls_ms` = doba DNS resolu / TCP connectu / TLS handshaku v ms.
+- `status` = `ok` nebo `FAIL` (služba nedostupná); u `FAIL` jsou časy prázdné.
+
+### `events.csv`
+```
+start,end,duration_s,scope,note
+2026-06-16T10:00:02+02:00,2026-06-16T10:00:04+02:00,2,internet,internet (oba veřejné cíle nedostupné)
+```
+- `scope` = `local` (tvá strana) nebo `internet` (provider). `duration_s` = délka výpadku v sekundách.
 
 ---
 
@@ -139,9 +186,10 @@ Nejjednodušší je vizuální HTML přehled:
 ```bash
 ./report-html.sh && xdg-open report.html
 ```
-Vygeneruje `report.html` se souhrnnými kartami (ztráty, latence, rychlost) a
-třemi interaktivními grafy: **latence v čase**, **ztráta paketů v čase** a
-**rychlost v čase**. Přegeneruj kdykoliv pro aktuální data. Soubor je samostatný
+Vygeneruje `report.html` se souhrnnými kartami (ztráty, latence, rychlost),
+**tabulkou výpadků** a interaktivními grafy: **latence**, **ztráta paketů**,
+**dosažitelnost (DNS/TCP/TLS)** a **rychlost** v čase. Přegeneruj kdykoliv pro
+aktuální data (sám si přitom přepočítá i `events.csv`). Soubor je samostatný
 (grafy přes Chart.js z CDN — k zobrazení je potřeba připojení k internetu).
 
 Případně `latency.csv` i `speed.csv` jsou běžné CSV — dají se otevřít i v
@@ -158,6 +206,8 @@ Hodnoty se mění nahoře v `netmon.sh` (po změně udělej `./ctl.sh stop && ./
 |----------|---------|--------|
 | `PING_INTERVAL` | 2 | sekund mezi koly pingů |
 | `PING_TIMEOUT` | 2 | sekund čekání na odpověď |
+| `REACH_INTERVAL` | 30 | sekund mezi reach sondami (DNS/TCP/TLS) |
+| `REACH_URL` | google/generate_204 | cíl reach sondy (vrací 204, bez těla) |
 | `SPEED_INTERVAL` | 3600 | sekund mezi testy rychlosti (3600 = 1×/h) |
 | `SPEED_BYTES` | 50000000 | bajtů na test rychlosti (50 MB) |
 | `TARGETS` | gateway/quad9/google | cíle pingu ve tvaru `"popisek=IP"` |

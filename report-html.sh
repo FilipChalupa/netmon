@@ -69,6 +69,35 @@ if [ -f "$SPD" ]; then
     }' "$SPD")
 fi
 
+# --- Dosažitelnost (DNS/TCP/TLS) v čase: avg za minutu ---
+RCH="$DIR/reach.csv"
+RCH_SERIES='{"labels":[],"dns":[],"tcp":[],"tls":[],"fails":0}'
+if [ -f "$RCH" ]; then
+  RCH_SERIES=$(awk -F, '
+    NR>1 && $6=="ok" { b=substr($1,1,16); if(!(b in seen)){seen[b]=1;ord[m++]=b}
+      d[b]+=$2; t[b]+=$3; l[b]+=$4; n[b]++ }
+    NR>1 && $6=="FAIL" { fails++ }
+    END{
+      for(i=0;i<m;i++)for(j=i+1;j<m;j++)if(ord[j]<ord[i]){x=ord[i];ord[i]=ord[j];ord[j]=x}
+      printf "{\"labels\":["
+      for(i=0;i<m;i++)printf "%s\"%s\"",(i?",":""),ord[i]
+      printf "],\"dns\":["; for(i=0;i<m;i++){b=ord[i];printf "%s%.1f",(i?",":""),d[b]/n[b]}
+      printf "],\"tcp\":["; for(i=0;i<m;i++){b=ord[i];printf "%s%.1f",(i?",":""),t[b]/n[b]}
+      printf "],\"tls\":["; for(i=0;i<m;i++){b=ord[i];printf "%s%.1f",(i?",":""),l[b]/n[b]}
+      printf "],\"fails\":%d}", fails+0
+    }' "$RCH")
+fi
+
+# --- Výpadky: přegeneruj events.csv a načti jako JSON ---
+[ -x "$DIR/events.sh" ] && "$DIR/events.sh" >/dev/null 2>&1
+EVT="$DIR/events.csv"
+EVENTS_JSON='[]'
+if [ -f "$EVT" ]; then
+  EVENTS_JSON=$(awk -F, 'NR>1{ if(!f){printf "["; f=1}else printf ","
+    printf "{\"start\":\"%s\",\"end\":\"%s\",\"dur\":%d,\"scope\":\"%s\"}",$1,$2,$3,$4 }
+    END{ if(!f)printf "["; printf "]" }' "$EVT")
+fi
+
 # --- Meta: rozsah a délka měření ---
 META_JSON=$(awk -F, 'NR>1 && $1!="" && $2!="--"{ if(first=="")first=$1; last=$1 } END{
   printf "{\"first\":\"%s\",\"last\":\"%s\"}", first, last }' "$LAT")
@@ -101,6 +130,9 @@ cat > "$OUT" <<HTMLEOF
   .panel{background:var(--card);border-radius:12px;padding:18px;margin-bottom:22px;border:1px solid #334155}
   .panel h2{margin:0 0 14px;font-size:16px}
   canvas{max-height:320px}
+  table.evt{width:100%;border-collapse:collapse;font-size:14px}
+  table.evt th{text-align:left;color:var(--mut);font-weight:600;padding:6px 10px;border-bottom:1px solid #334155}
+  table.evt td{padding:6px 10px;border-bottom:1px solid #233044;font-variant-numeric:tabular-nums}
   .foot{color:var(--mut);font-size:12px;text-align:center;margin-top:30px}
 </style>
 </head>
@@ -109,8 +141,10 @@ cat > "$OUT" <<HTMLEOF
   <div class="sub" id="period"></div>
   <div class="cards" id="cards"></div>
 
+  <div class="panel"><h2>🛑 Výpadky</h2><div id="events"></div></div>
   <div class="panel"><h2>Latence v čase (ms)</h2><canvas id="latChart"></canvas></div>
   <div class="panel"><h2>Ztráta paketů (% za minutu)</h2><canvas id="lossChart"></canvas></div>
+  <div class="panel"><h2>Dosažitelnost služeb — DNS / TCP / TLS (ms)</h2><canvas id="rchChart"></canvas></div>
   <div class="panel"><h2>Rychlost stahování (Mbit/s)</h2><canvas id="spdChart"></canvas></div>
 
   <div class="foot">Vygenerováno: ${GEN_TS} · netmon</div>
@@ -119,6 +153,8 @@ cat > "$OUT" <<HTMLEOF
 const SUMMARY = ${SUMMARY_JSON};
 const LAT = ${LAT_SERIES};
 const SPD = ${SPD_SERIES};
+const RCH = ${RCH_SERIES};
+const EVENTS = ${EVENTS_JSON};
 const META = ${META_JSON};
 const COLORS = {gateway:'#38bdf8', quad9:'#a78bfa', google:'#f472b6', _0:'#34d399', _1:'#fbbf24', _2:'#fb7185'};
 const colorFor = (name,i)=> COLORS[name] || COLORS['_'+(i%3)];
@@ -154,6 +190,25 @@ if (SPD.mbps.length){
     </div>\`);
 }
 
+// Tabulka výpadků
+(function(){
+  const el=document.getElementById('events');
+  if(!EVENTS.length){ el.innerHTML='<p style="color:var(--ok);margin:0">Žádné výpadky během měření. 🎉</p>'; return; }
+  const fmtDur=s=> s>=60 ? (s/60).toFixed(1)+' min' : s+' s';
+  const tot={}; EVENTS.forEach(e=>tot[e.scope]=(tot[e.scope]||0)+e.dur);
+  let head='<div style="margin-bottom:10px">';
+  if(tot.local) head+=\`<span class="pill bad">lokál: \${EVENTS.filter(e=>e.scope==='local').length}× · \${fmtDur(tot.local)}</span> \`;
+  if(tot.internet) head+=\`<span class="pill warn">internet: \${EVENTS.filter(e=>e.scope==='internet').length}× · \${fmtDur(tot.internet)}</span>\`;
+  head+='</div>';
+  let rows=EVENTS.slice().sort((a,b)=>b.dur-a.dur).map(e=>{
+    const cls=e.scope==='local'?'bad':'warn';
+    const lbl=e.scope==='local'?'lokální linka':'internet / ISP';
+    return \`<tr><td>\${e.start.replace('T',' ')}</td><td>\${e.end.replace('T',' ').slice(11)}</td>\`+
+           \`<td style="text-align:right">\${fmtDur(e.dur)}</td><td><span class="pill \${cls}">\${lbl}</span></td></tr>\`;
+  }).join('');
+  el.innerHTML=head+\`<table class="evt"><thead><tr><th>začátek</th><th>konec</th><th style="text-align:right">trvání</th><th>rozsah</th></tr></thead><tbody>\${rows}</tbody></table>\`;
+})();
+
 const baseOpts = (yLabel)=>({
   responsive:true, interaction:{mode:'index',intersect:false},
   scales:{
@@ -180,6 +235,16 @@ new Chart(document.getElementById('lossChart'), {
     label:t, data:LAT.targets[t].loss, borderColor:colorFor(t,i),
     backgroundColor:colorFor(t,i), borderWidth:1.6, tension:.25, fill:false })) },
   options: baseOpts('% ztrát / min')
+});
+
+// Dosažitelnost DNS/TCP/TLS
+new Chart(document.getElementById('rchChart'), {
+  type:'line',
+  data:{ labels:RCH.labels, datasets:[
+    {label:'DNS', data:RCH.dns, borderColor:'#34d399', backgroundColor:'#34d399', borderWidth:1.6, tension:.25},
+    {label:'TCP', data:RCH.tcp, borderColor:'#fbbf24', backgroundColor:'#fbbf24', borderWidth:1.6, tension:.25},
+    {label:'TLS', data:RCH.tls, borderColor:'#fb7185', backgroundColor:'#fb7185', borderWidth:1.6, tension:.25} ]},
+  options: baseOpts('ms')
 });
 
 // Rychlost
