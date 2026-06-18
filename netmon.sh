@@ -14,9 +14,14 @@ SPEED_INTERVAL=3600      # sekund mezi měřeními rychlosti (3600 = 1×/h)
 SPEED_BYTES=50000000     # kolik bajtů stáhnout pro test rychlosti (50 MB)
 SPEED_URL="https://speed.cloudflare.com/__down?bytes=${SPEED_BYTES}"
 
+# Brána se detekuje automaticky z výchozí trasy (přežije změnu sítě).
+# Když detekce selže, použije se fallback níže.
+GATEWAY_IP="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
+GATEWAY_IP="${GATEWAY_IP:-10.30.0.1}"
+
 # Cíle pingu: "popisek=IP". Brána = zdraví lokální linky; zbytek = internet/ISP.
 TARGETS=(
-  "gateway=10.0.0.1"
+  "gateway=${GATEWAY_IP}"
   "quad9=9.9.9.9"
   "google=8.8.8.8"
 )
