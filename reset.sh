@@ -7,7 +7,7 @@
 #   ./reset.sh --purge    # smaže úplně (bez zálohy) — opatrně!
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOGS=(latency.csv speed.csv reach.csv events.csv netmon.run.log)
+LOGS=(latency.csv speed.csv reach.csv uptime.csv events.csv netmon.run.log)
 
 MODE="ask"
 case "${1:-}" in

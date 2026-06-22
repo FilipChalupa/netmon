@@ -13,6 +13,7 @@ REACH_URL="https://www.google.com/generate_204"   # cíl reach sondy (vrací 204
 SPEED_INTERVAL=3600      # sekund mezi měřeními rychlosti (3600 = 1×/h)
 SPEED_BYTES=50000000     # kolik bajtů stáhnout pro test rychlosti (50 MB)
 SPEED_URL="https://speed.cloudflare.com/__down?bytes=${SPEED_BYTES}"
+HEARTBEAT_INTERVAL=60    # sekund mezi „tepy" do uptime.csv (záznam, že skript běží)
 
 # Brána se detekuje automaticky z výchozí trasy (přežije změnu sítě).
 # Když detekce selže, použije se fallback níže.
@@ -31,11 +32,13 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAT_LOG="$DIR/latency.csv"
 SPD_LOG="$DIR/speed.csv"
 RCH_LOG="$DIR/reach.csv"
+UPT_LOG="$DIR/uptime.csv"
 
 # Hlavičky (jen pokud soubor ještě neexistuje)
 [ -f "$LAT_LOG" ] || echo "timestamp,target,ip,status,rtt_ms" >> "$LAT_LOG"
 [ -f "$SPD_LOG" ] || echo "timestamp,down_mbps,bytes,seconds,http_code" >> "$SPD_LOG"
 [ -f "$RCH_LOG" ] || echo "timestamp,dns_ms,tcp_ms,tls_ms,http_code,status" >> "$RCH_LOG"
+[ -f "$UPT_LOG" ] || echo "timestamp,event" >> "$UPT_LOG"
 
 running=1
 trap 'running=0' TERM INT
@@ -85,6 +88,11 @@ speed_test() {
   fi
 }
 
+# Záznam, že skript běží: START hned na startu, pak pravidelný „tep" (ALIVE)
+# a STOP při ukončení. Mezera mezi tepy v uptime.csv = skript/počítač neběžel.
+echo "$(now_iso),START" >> "$UPT_LOG"
+last_beat=$(date +%s)
+
 # Hned na startu jeden test rychlosti + reach, ať máš referenci
 last_speed=0; last_reach=0
 speed_test "$(now_iso)"; last_speed=$(date +%s)
@@ -103,8 +111,12 @@ while [ "$running" -eq 1 ]; do
   if [ $(( nowsec - last_speed )) -ge "$SPEED_INTERVAL" ]; then
     speed_test "$(now_iso)"; last_speed=$(date +%s)
   fi
+  if [ $(( nowsec - last_beat )) -ge "$HEARTBEAT_INTERVAL" ]; then
+    echo "$(now_iso),ALIVE" >> "$UPT_LOG"; last_beat=$(date +%s)
+  fi
 
   sleep "$PING_INTERVAL"
 done
 
+echo "$(now_iso),STOP" >> "$UPT_LOG"
 echo "$(now_iso),--,--,STOPPED," >> "$LAT_LOG"

@@ -98,6 +98,40 @@ if [ -f "$EVT" ]; then
     END{ if(!f)printf "["; printf "]" }' "$EVT")
 fi
 
+# --- Běh skriptu: z uptime.csv odvoď, kdy měření neběželo (mezery mezi tepy) ---
+# Mezera mezi sousedními záznamy větší než DOWN_THRESHOLD = skript byl vypnutý
+# nebo neběžel celý počítač. STOP před mezerou = řízené zastavení; jinak pád/odpojení.
+UPT="$DIR/uptime.csv"
+UPTIME_JSON='{"first":"","last":"","spanSec":0,"downSec":0,"gaps":[]}'
+if [ -f "$UPT" ]; then
+  UPTIME_JSON=$(awk -F, -v thr=150 '
+    BEGIN{ ng=0; down=0 }
+    function epoch(t,   Y,Mo,D,h,mi,s){
+      Y=substr(t,1,4); Mo=substr(t,6,2); D=substr(t,9,2)
+      h=substr(t,12,2); mi=substr(t,15,2); s=substr(t,18,2)
+      return mktime(Y" "Mo" "D" "h" "mi" "s)
+    }
+    NR>1 && $1!="" {
+      ts=$1; ev=$2; e=epoch(ts)
+      if(first=="") first=ts
+      if(prevTs!=""){
+        gap=e-prevE
+        if(gap>thr){
+          cause=(prevEv=="STOP") ? "stopped" : "crash"
+          g[ng]=sprintf("{\"from\":\"%s\",\"to\":\"%s\",\"dur\":%d,\"cause\":\"%s\"}",prevTs,ts,gap,cause)
+          ng++; down+=gap
+        }
+      }
+      prevTs=ts; prevE=e; prevEv=ev; last=ts; lastE=e; firstE=(firstE==""?e:firstE)
+    }
+    END{
+      span=(lastE>firstE)?lastE-firstE:0
+      printf "{\"first\":\"%s\",\"last\":\"%s\",\"spanSec\":%d,\"downSec\":%d,\"gaps\":[",first,last,span,down+0
+      for(i=0;i<ng;i++) printf "%s%s",(i?",":""),g[i]
+      printf "]}"
+    }' "$UPT")
+fi
+
 # --- Meta: rozsah a délka měření ---
 META_JSON=$(awk -F, 'NR>1 && $1!="" && $2!="--"{ if(first=="")first=$1; last=$1 } END{
   printf "{\"first\":\"%s\",\"last\":\"%s\"}", first, last }' "$LAT")
@@ -141,6 +175,7 @@ cat > "$OUT" <<HTMLEOF
   <div class="sub" id="period"></div>
   <div class="cards" id="cards"></div>
 
+  <div class="panel"><h2>⏱️ Běh měření</h2><div id="uptime"></div></div>
   <div class="panel"><h2>🛑 Výpadky</h2><div id="events"></div></div>
   <div class="panel"><h2>Latence v čase (ms)</h2><canvas id="latChart"></canvas></div>
   <div class="panel"><h2>Ztráta paketů (% za minutu)</h2><canvas id="lossChart"></canvas></div>
@@ -155,6 +190,7 @@ const LAT = ${LAT_SERIES};
 const SPD = ${SPD_SERIES};
 const RCH = ${RCH_SERIES};
 const EVENTS = ${EVENTS_JSON};
+const UPTIME = ${UPTIME_JSON};
 const META = ${META_JSON};
 const COLORS = {gateway:'#38bdf8', quad9:'#a78bfa', google:'#f472b6', _0:'#34d399', _1:'#fbbf24', _2:'#fb7185'};
 const colorFor = (name,i)=> COLORS[name] || COLORS['_'+(i%3)];
@@ -189,6 +225,45 @@ if (SPD.mbps.length){
       <div class="metric"><span>měření</span><span class="v">\${m.length}</span></div>
     </div>\`);
 }
+
+// Běh měření — kdy skript/počítač neběžel (mezery mezi tepy v uptime.csv)
+(function(){
+  const el=document.getElementById('uptime');
+  const fmtDur=s=> s>=3600 ? (s/3600).toFixed(1)+' h' : s>=60 ? (s/60).toFixed(1)+' min' : s+' s';
+  if(!UPTIME.first){ el.innerHTML='<p style="color:var(--mut);margin:0">Zatím žádný záznam o běhu (uptime.csv).</p>'; return; }
+  const up = UPTIME.spanSec - UPTIME.downSec;
+  const cov = UPTIME.spanSec>0 ? (up/UPTIME.spanSec*100) : 100;
+  const stopped = UPTIME.gaps.filter(g=>g.cause==='stopped').length;
+  const crash   = UPTIME.gaps.filter(g=>g.cause==='crash').length;
+  // Souhrnná karta pokrytí
+  const covCls = cov>=99 ? 'ok' : cov>=90 ? 'warn' : 'bad';
+  document.getElementById('cards').insertAdjacentHTML('beforeend', \`
+    <div class="card">
+      <h3>běh měření</h3>
+      <div class="big">\${cov.toFixed(1)}<span style="font-size:14px;color:var(--mut)"> % pokrytí</span></div>
+      <div class="metric"><span>Doba běhu</span><span class="v">\${fmtDur(up)}</span></div>
+      <div class="metric"><span>Mimo provoz</span><span class="pill \${covCls}">\${fmtDur(UPTIME.downSec)}</span></div>
+      <div class="metric"><span>Přerušení</span><span class="v">\${UPTIME.gaps.length}×</span></div>
+    </div>\`);
+
+  let head='<div style="margin-bottom:10px">';
+  head+=\`<span class="pill \${covCls}">pokrytí \${cov.toFixed(1)}% · mimo provoz \${fmtDur(UPTIME.downSec)}</span> \`;
+  if(crash)   head+=\`<span class="pill bad">neočekávaná přerušení: \${crash}×</span> \`;
+  if(stopped) head+=\`<span class="pill warn">řízená zastavení: \${stopped}×</span>\`;
+  head+='</div>';
+  if(!UPTIME.gaps.length){
+    el.innerHTML=head+'<p style="color:var(--ok);margin:0">Měření běželo bez přerušení. 🎉</p>';
+    return;
+  }
+  const rows=UPTIME.gaps.slice().sort((a,b)=>b.dur-a.dur).map(g=>{
+    const isCrash=g.cause==='crash';
+    const cls=isCrash?'bad':'warn';
+    const lbl=isCrash?'pád / vypnutý počítač':'skript zastaven';
+    return \`<tr><td>\${g.from.replace('T',' ')}</td><td>\${g.to.replace('T',' ')}</td>\`+
+           \`<td style="text-align:right">\${fmtDur(g.dur)}</td><td><span class="pill \${cls}">\${lbl}</span></td></tr>\`;
+  }).join('');
+  el.innerHTML=head+\`<table class="evt"><thead><tr><th>od</th><th>do (znovu naběhlo)</th><th style="text-align:right">trvání</th><th>příčina</th></tr></thead><tbody>\${rows}</tbody></table>\`;
+})();
 
 // Tabulka výpadků
 (function(){

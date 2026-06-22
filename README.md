@@ -19,6 +19,7 @@ instalovat (jen `ping`, `curl`, `bash`) a běží na pozadí.
 | `latency.csv` | Log pingů (vzniká za běhu). |
 | `speed.csv` | Log měření rychlosti (vzniká za běhu). |
 | `reach.csv` | Log dosažitelnosti služeb — DNS / TCP / TLS (vzniká za běhu). |
+| `uptime.csv` | Záznam, kdy skript běžel — „tepy" pro detekci, kdy měření/počítač neběžel (vzniká za běhu). |
 | `events.csv` | Odvozený seznam výpadků (vytváří `events.sh`). |
 | `archiv/` | Zálohy starých logů (vytváří `reset.sh`). |
 | `netmon.run.log` | Provozní výstup procesu (pro ladění). |
@@ -92,6 +93,15 @@ Stáhne ~50 MB z Cloudflare (`speed.cloudflare.com`) a změří propustnost.
 Spouští se hned po startu a pak každou hodinu, takže vidíš **kolísání rychlosti
 v čase** (např. večerní špička vs. noc).
 
+### Běh měření (1×/60 s) — `uptime.csv`
+Aby šlo poznat, **kdy měření vůbec neběželo** (skript zastavený, nebo dokonce
+vypnutý počítač), zapisuje skript pravidelný „tep". Na startu zapíše `START`,
+za běhu každou minutu `ALIVE` a při řízeném ukončení `STOP`. **Mezera mezi tepy**
+delší než ~2,5 minuty znamená, že měření v tu dobu neběželo. Když je před mezerou
+`STOP`, šlo o řízené zastavení; když chybí (poslední byl `ALIVE`), šlo nejspíš
+o pád nebo vypnutý počítač. HTML report z toho spočítá **pokrytí měření** a vypíše
+seznam přerušení.
+
 ### Výpadky (odvozené) — `events.csv`
 `events.sh` projde `latency.csv` a slepí jednotlivé ztráty do **souvislých
 událostí** se začátkem, koncem, délkou a rozsahem:
@@ -129,6 +139,16 @@ timestamp,dns_ms,tcp_ms,tls_ms,http_code,status
 ```
 - `dns_ms` / `tcp_ms` / `tls_ms` = doba DNS resolu / TCP connectu / TLS handshaku v ms.
 - `status` = `ok` nebo `FAIL` (služba nedostupná); u `FAIL` jsou časy prázdné.
+
+### `uptime.csv`
+```
+timestamp,event
+2026-06-20T10:00:00+02:00,START
+2026-06-20T10:01:00+02:00,ALIVE
+2026-06-20T10:02:00+02:00,STOP
+```
+- `event` = `START` (skript naběhl) / `ALIVE` (tep za běhu, 1×/min) / `STOP` (řízené ukončení).
+- Mezera mezi dvěma řádky delší než tep = doba, kdy měření neběželo.
 
 ### `events.csv`
 ```
@@ -186,7 +206,8 @@ Nejjednodušší je vizuální HTML přehled:
 ```bash
 ./report-html.sh && xdg-open report.html
 ```
-Vygeneruje `report.html` se souhrnnými kartami (ztráty, latence, rychlost),
+Vygeneruje `report.html` se souhrnnými kartami (ztráty, latence, rychlost,
+**pokrytí měření**), přehledem **běhu měření** (kdy skript/počítač neběžel),
 **tabulkou výpadků** a interaktivními grafy: **latence**, **ztráta paketů**,
 **dosažitelnost (DNS/TCP/TLS)** a **rychlost** v čase. Přegeneruj kdykoliv pro
 aktuální data (sám si přitom přepočítá i `events.csv`). Soubor je samostatný
@@ -210,6 +231,7 @@ Hodnoty se mění nahoře v `netmon.sh` (po změně udělej `./ctl.sh stop && ./
 | `REACH_URL` | google/generate_204 | cíl reach sondy (vrací 204, bez těla) |
 | `SPEED_INTERVAL` | 3600 | sekund mezi testy rychlosti (3600 = 1×/h) |
 | `SPEED_BYTES` | 50000000 | bajtů na test rychlosti (50 MB) |
+| `HEARTBEAT_INTERVAL` | 60 | sekund mezi „tepy" do `uptime.csv` (záznam o běhu) |
 | `TARGETS` | gateway/quad9/google | cíle pingu ve tvaru `"popisek=IP"` |
 
 **Objem dat:** hodinový test stahuje 50 MB ≈ **1,2 GB/den**. Na měřené lince

@@ -46,6 +46,33 @@ if [ -f "$RCH" ]; then
          printf "selhání (nedostupné služby): %d\n", f+0 }' "$RCH"
 fi
 
+UPT="$DIR/uptime.csv"
+if [ -f "$UPT" ]; then
+  echo
+  echo "--- Běh měření (kdy skript/počítač neběžel) ---"
+  awk -F, -v thr=150 '
+    BEGIN{ ng=0; down=0 }
+    function epoch(t,   Y,Mo,D,h,mi,s){
+      Y=substr(t,1,4); Mo=substr(t,6,2); D=substr(t,9,2)
+      h=substr(t,12,2); mi=substr(t,15,2); s=substr(t,18,2)
+      return mktime(Y" "Mo" "D" "h" "mi" "s)
+    }
+    function dur(s){ return s>=3600 ? sprintf("%.1f h",s/3600) : s>=60 ? sprintf("%.1f min",s/60) : s"s" }
+    NR>1 && $1!="" {
+      e=epoch($1)
+      if(prevTs!=""){ gap=e-prevE
+        if(gap>thr){ cause=(prevEv=="STOP")?"skript zastaven":"pád / vypnutý počítač"
+          info[ng]=sprintf("  %s → %s  (%s, %s)", prevTs, $1, dur(gap), cause); ng++; down+=gap } }
+      prevTs=$1; prevE=e; prevEv=$2; lastE=e; if(firstE=="")firstE=e
+    }
+    END{
+      span=(lastE>firstE)?lastE-firstE:0; up=span-down
+      cov=(span>0)?up/span*100:100
+      printf "pokrytí: %.1f%%   doba běhu: %s   mimo provoz: %s   přerušení: %d\n", cov, dur(up), dur(down), ng
+      for(i=0;i<ng;i++) print info[i]
+    }' "$UPT"
+fi
+
 if [ -x "$DIR/events.sh" ]; then
   echo
   "$DIR/events.sh" | sed -n '/=====/,$p'
