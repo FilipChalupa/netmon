@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # netmon.sh — měření kvality připojení (výpadky, latence, jitter, rychlost, dosažitelnost)
-# Píše CSV logy do adresáře skriptu. Ovládej přes systemd (netmon.service) nebo ./ctl.sh
+# Píše CSV logy do log/RRRRMMDD/ (jeden podadresář na den). Ovládej přes systemd
+# (netmon.service) nebo ./ctl.sh
 #
 set -u
 
@@ -29,16 +30,25 @@ TARGETS=(
 # --------------------------------------------------------------------------
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAT_LOG="$DIR/latency.csv"
-SPD_LOG="$DIR/speed.csv"
-RCH_LOG="$DIR/reach.csv"
-UPT_LOG="$DIR/uptime.csv"
+LOG_ROOT="$DIR/log"   # logy se píší do log/RRRRMMDD/ (jeden podadresář na den)
 
-# Hlavičky (jen pokud soubor ještě neexistuje)
-[ -f "$LAT_LOG" ] || echo "timestamp,target,ip,status,rtt_ms" >> "$LAT_LOG"
-[ -f "$SPD_LOG" ] || echo "timestamp,down_mbps,bytes,seconds,http_code" >> "$SPD_LOG"
-[ -f "$RCH_LOG" ] || echo "timestamp,dns_ms,tcp_ms,tls_ms,http_code,status" >> "$RCH_LOG"
-[ -f "$UPT_LOG" ] || echo "timestamp,event" >> "$UPT_LOG"
+# Přepne zápis na adresář dnešního dne (log/RRRRMMDD). Při prvním použití dne ho
+# založí i s hlavičkami CSV. Volá se před každým kolem, takže se logy po půlnoci
+# samy „překlopí" do nového dne.
+LAT_LOG=""; SPD_LOG=""; RCH_LOG=""; UPT_LOG=""; LOG_DAY=""
+rotate_logs() {
+  local day; day="$(date +%Y%m%d)"
+  [ "$day" = "$LOG_DAY" ] && return        # stejný den → není co dělat
+  local d="$LOG_ROOT/$day"
+  mkdir -p "$d"
+  LAT_LOG="$d/latency.csv"; SPD_LOG="$d/speed.csv"
+  RCH_LOG="$d/reach.csv";   UPT_LOG="$d/uptime.csv"
+  [ -f "$LAT_LOG" ] || echo "timestamp,target,ip,status,rtt_ms" >> "$LAT_LOG"
+  [ -f "$SPD_LOG" ] || echo "timestamp,down_mbps,bytes,seconds,http_code" >> "$SPD_LOG"
+  [ -f "$RCH_LOG" ] || echo "timestamp,dns_ms,tcp_ms,tls_ms,http_code,status" >> "$RCH_LOG"
+  [ -f "$UPT_LOG" ] || echo "timestamp,event" >> "$UPT_LOG"
+  LOG_DAY="$day"
+}
 
 running=1
 trap 'running=0' TERM INT
@@ -90,6 +100,7 @@ speed_test() {
 
 # Záznam, že skript běží: START hned na startu, pak pravidelný „tep" (ALIVE)
 # a STOP při ukončení. Mezera mezi tepy v uptime.csv = skript/počítač neběžel.
+rotate_logs
 echo "$(now_iso),START" >> "$UPT_LOG"
 last_beat=$(date +%s)
 
@@ -99,6 +110,7 @@ speed_test "$(now_iso)"; last_speed=$(date +%s)
 reach_probe "$(now_iso)"; last_reach=$(date +%s)
 
 while [ "$running" -eq 1 ]; do
+  rotate_logs                        # po půlnoci přepne na nový den
   ts=$(now_iso)                      # jeden timestamp pro celé kolo
   for t in "${TARGETS[@]}"; do
     probe_target "$ts" "${t%%=*}" "${t#*=}"
