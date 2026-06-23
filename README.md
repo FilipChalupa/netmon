@@ -14,6 +14,9 @@ instalovat (jen `ping`, `curl`, `bash`) a běží na pozadí.
 | `ctl.sh` | Ovládání: `start` / `stop` / `status`. |
 | `report.sh` | Vypíše textový souhrn z nasbíraných dat. |
 | `report-html.sh` | Vygeneruje **vizuální HTML přehled s grafy** (`report.html`). |
+| `report-daily.sh` | Vygeneruje report za **předchozí den** a (je-li nastaven SMTP) pošle ho **e-mailem**. |
+| `install-report-timer.sh` | Nainstaluje **systemd timer**, který `report-daily.sh` pouští každý den ve 3:00. |
+| `.env.example` | Vzor konfigurace odesílání reportů e-mailem (zkopíruj na `.env`). |
 | `events.sh` | Odvodí z pingů **čitelný seznam výpadků** (`events.csv`). |
 | `reset.sh` | Vyčistí historické logy a začne čisté měření (se zálohou). |
 | `latency.csv` | Log pingů (vzniká za běhu). |
@@ -216,6 +219,61 @@ aktuální data (sám si přitom přepočítá i `events.csv`). Soubor je samost
 Případně `latency.csv` i `speed.csv` jsou běžné CSV — dají se otevřít i v
 LibreOffice Calc / Excel. Pro latenci filtruj na jeden cíl (`target`), ať se
 křivky nepřekrývají.
+
+---
+
+## Automatický denní report (+ e-mail)
+
+`report-daily.sh` vygeneruje report **za předchozí den** (nebo za den z argumentu)
+a uloží ho vedle dat dne do `log/RRRRMMDD/`:
+
+```bash
+./report-daily.sh            # za včerejšek
+./report-daily.sh 20260622   # za konkrétní den (RRRRMMDD)
+```
+
+Vytvoří `report-RRRRMMDD.html` (vizuální přehled jen za ten den) a
+`report-RRRRMMDD.txt` (textový souhrn). Reporty ostatních skriptů (`report.html`,
+`events.csv`) zůstávají nedotčené.
+
+### Spouštění ve 3:00 ráno
+
+Pro automatické generování každý den ve 3:00 (za předchozí den) je systemd user
+timer. Zapneš ho jednou:
+
+```bash
+./install-report-timer.sh                 # nainstaluje a zapne timer
+systemctl --user list-timers netmon-report.timer   # kdy poběží příště
+journalctl --user -u netmon-report.service -n 50    # log posledního běhu
+./install-report-timer.sh --uninstall     # vypnutí
+```
+
+Timer má `Persistent=true` — když byl počítač ve 3:00 vypnutý, report se dožene
+při nejbližším startu. (Funguje i po rebootu díky `loginctl enable-linger`, viz
+sekce o autostartu měření.)
+
+### Odeslání e-mailem (volitelné)
+
+Když chceš report dostávat mailem, zkopíruj `.env.example` na `.env` a vyplň SMTP:
+
+```bash
+cp .env.example .env
+# uprav SMTP_HOST, SMTP_TO, případně SMTP_USER/SMTP_PASS …
+```
+
+Pak `report-daily.sh` po vygenerování pošle textový souhrn v těle a HTML report
+jako přílohu. Posílá se přes `curl` (žádná další závislost). **Bez vyplněného
+`SMTP_HOST` + `SMTP_TO` se nic neposílá** — report se jen uloží na disk. Soubor
+`.env` je v `.gitignore`, takže se přihlašovací údaje necommitnou.
+
+| Proměnná | Význam |
+|----------|--------|
+| `SMTP_HOST` | SMTP server (povinné pro odeslání). |
+| `SMTP_TO` | Příjemce/příjemci (povinné), víc oddělíš čárkou. |
+| `SMTP_PORT` | Port; výchozí podle `SMTP_TLS` (starttls→587, ssl→465, none→25). |
+| `SMTP_TLS` | `starttls` (výchozí) / `ssl` / `none`. |
+| `SMTP_USER` / `SMTP_PASS` | Přihlášení (nech prázdné, když ho server nevyžaduje). |
+| `SMTP_FROM` | Odesílatel (výchozí = `SMTP_USER`). |
 
 ---
 

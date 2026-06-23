@@ -3,17 +3,20 @@
 # Použití: ./report-html.sh   ->  vytvoří report.html (otevři v prohlížeči)
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_ROOT="$DIR/log"; OUT="$DIR/report.html"
+LOG_ROOT="$DIR/log"; OUT="${NETMON_OUT:-$DIR/report.html}"
+
+# Volitelně omez report na jeden den: NETMON_DAY=RRRRMMDD (prázdné = všechny dny).
+DAY_GLOB="${NETMON_DAY:-*}"
 
 # Sloučí denní CSV (log/RRRRMMDD/<jméno>) do jednoho proudu — hlavička jen jednou.
 merge_logs() {
   local name="$1" first=1 f
-  for f in "$LOG_ROOT"/*/"$name"; do
+  for f in "$LOG_ROOT"/$DAY_GLOB/"$name"; do
     [ -f "$f" ] || continue
     if [ "$first" = 1 ]; then cat "$f"; first=0; else tail -n +2 "$f"; fi
   done
 }
-has_logs() { local f; for f in "$LOG_ROOT"/*/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
+has_logs() { local f; for f in "$LOG_ROOT"/$DAY_GLOB/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
 
 has_logs latency.csv || { echo "Chybí logy v $LOG_ROOT — nejdřív spusť měření."; exit 1; }
 
@@ -98,8 +101,9 @@ if has_logs reach.csv; then
 fi
 
 # --- Výpadky: přegeneruj events.csv a načti jako JSON ---
+# events.sh zdědí NETMON_DAY i NETMON_EVENTS_OUT z prostředí (stejné omezení na den).
 [ -x "$DIR/events.sh" ] && "$DIR/events.sh" >/dev/null 2>&1
-EVT="$DIR/events.csv"
+EVT="${NETMON_EVENTS_OUT:-$DIR/events.csv}"
 EVENTS_JSON='[]'
 if [ -f "$EVT" ]; then
   EVENTS_JSON=$(awk -F, 'NR>1{ if(!f){printf "["; f=1}else printf ","

@@ -1,0 +1,9 @@
+[Unit]
+Description=netmon — denní report za předchozí den (+ e-mail, je-li nastaven SMTP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/netmon
+ExecStart=/usr/bin/bash %h/netmon/report-daily.sh

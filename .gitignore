@@ -17,3 +17,6 @@ log/
 # runtime soubory procesu
 /netmon.run.log
 /netmon.pid
+
+# lokální konfigurace e-mailu (SMTP přihlášení) — necommituj!
+/.env

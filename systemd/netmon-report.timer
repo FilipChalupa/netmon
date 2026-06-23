@@ -1,0 +1,10 @@
+[Unit]
+Description=netmon — spustí denní report každý den ve 3:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# Když počítač ve 3:00 neběžel, dožene report při nejbližším startu.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

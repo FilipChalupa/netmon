@@ -4,16 +4,19 @@ set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_ROOT="$DIR/log"
 
+# Volitelně omez report na jeden den: NETMON_DAY=RRRRMMDD (prázdné = všechny dny).
+DAY_GLOB="${NETMON_DAY:-*}"
+
 # Sloučí denní CSV (log/RRRRMMDD/<jméno>) do jednoho proudu — hlavička jen jednou.
 merge_logs() {
   local name="$1" first=1 f
-  for f in "$LOG_ROOT"/*/"$name"; do
+  for f in "$LOG_ROOT"/$DAY_GLOB/"$name"; do
     [ -f "$f" ] || continue
     if [ "$first" = 1 ]; then cat "$f"; first=0; else tail -n +2 "$f"; fi
   done
 }
 # Existuje aspoň jeden denní soubor daného druhu?
-has_logs() { local f; for f in "$LOG_ROOT"/*/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
+has_logs() { local f; for f in "$LOG_ROOT"/$DAY_GLOB/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
 
 echo "===== KVALITA PŘIPOJENÍ — souhrn ====="
 echo
