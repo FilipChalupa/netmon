@@ -5,8 +5,18 @@
 # Spusť kdykoliv: ./events.sh   (přegeneruje events.csv a vypíše souhrn)
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAT="$DIR/latency.csv"; OUT="$DIR/events.csv"
-[ -f "$LAT" ] || { echo "Chybí $LAT — nejdřív spusť měření."; exit 1; }
+LOG_ROOT="$DIR/log"; OUT="$DIR/events.csv"
+
+# Sloučí denní CSV (log/RRRRMMDD/<jméno>) do jednoho proudu — hlavička jen jednou.
+merge_logs() {
+  local name="$1" first=1 f
+  for f in "$LOG_ROOT"/*/"$name"; do
+    [ -f "$f" ] || continue
+    if [ "$first" = 1 ]; then cat "$f"; first=0; else tail -n +2 "$f"; fi
+  done
+}
+has_logs() { local f; for f in "$LOG_ROOT"/*/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
+has_logs latency.csv || { echo "Chybí logy v $LOG_ROOT — nejdřív spusť měření."; exit 1; }
 
 awk -F, -v interval=2 '
   function epoch(t,   Y,Mo,D,h,mi,s){
@@ -55,4 +65,4 @@ awk -F, -v interval=2 '
       printf "\nDetail v events.csv (%s)\n", OUT
     }
   }
-' OUT="$OUT" "$LAT"
+' OUT="$OUT" <(merge_logs latency.csv)

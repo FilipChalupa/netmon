@@ -2,7 +2,18 @@
 # report.sh — souhrn z nasbíraných dat. Spusť kdykoliv: ./report.sh
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAT="$DIR/latency.csv"; SPD="$DIR/speed.csv"
+LOG_ROOT="$DIR/log"
+
+# Sloučí denní CSV (log/RRRRMMDD/<jméno>) do jednoho proudu — hlavička jen jednou.
+merge_logs() {
+  local name="$1" first=1 f
+  for f in "$LOG_ROOT"/*/"$name"; do
+    [ -f "$f" ] || continue
+    if [ "$first" = 1 ]; then cat "$f"; first=0; else tail -n +2 "$f"; fi
+  done
+}
+# Existuje aspoň jeden denní soubor daného druhu?
+has_logs() { local f; for f in "$LOG_ROOT"/*/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
 
 echo "===== KVALITA PŘIPOJENÍ — souhrn ====="
 echo
@@ -19,35 +30,33 @@ END{
   for (t in tot) if (t!="--")
     printf "%-12s %8d %7.2f%% %9.1f %9.1f %9.1f\n", t, tot[t],
       (loss[t]/tot[t])*100, (n[t]?sum[t]/n[t]:0), min[t]+0, max[t]+0
-}' "$LAT" | sort
+}' <(merge_logs latency.csv) | sort
 
 echo
 echo "--- Nejdelší souvislé výpadky (cíl 'google') ---"
 awk -F, '$2=="google"{
   if($4=="LOSS"){ if(start=="")start=$1; cnt++ }
   else { if(cnt>1) print cnt" kol v řadě  od "start; start=""; cnt=0 }
-}' "$LAT" | sort -rn | head -5
+}' <(merge_logs latency.csv) | sort -rn | head -5
 [ -s /dev/stdin ] || true
 
 echo
 echo "--- Rychlost stahování (Mbit/s) ---"
 awk -F, 'NR>1 && $2!=""{ s+=$2; n++; if(min==""||$2<min)min=$2; if($2>max)max=$2 }
 END{ if(n) printf "měření: %d   avg: %.1f   min: %.1f   max: %.1f\n", n, s/n, min, max
-     else print "zatím žádná úspěšná měření" }' "$SPD"
-fails=$(awk -F, 'NR>1 && $2==""{c++}END{print c+0}' "$SPD")
+     else print "zatím žádná úspěšná měření" }' <(merge_logs speed.csv)
+fails=$(awk -F, 'NR>1 && $2==""{c++}END{print c+0}' <(merge_logs speed.csv))
 echo "neúspěšná měření rychlosti: $fails"
 
-RCH="$DIR/reach.csv"
-if [ -f "$RCH" ]; then
+if has_logs reach.csv; then
   echo
   echo "--- Dosažitelnost služeb (DNS / TCP / TLS, ms) ---"
   awk -F, 'NR>1 && $6=="ok"{ d+=$2;t+=$3;l+=$4;n++ } NR>1 && $6=="FAIL"{f++}
     END{ if(n) printf "úspěšných: %d   avg DNS: %.1f   avg TCP: %.1f   avg TLS: %.1f\n", n, d/n, t/n, l/n
-         printf "selhání (nedostupné služby): %d\n", f+0 }' "$RCH"
+         printf "selhání (nedostupné služby): %d\n", f+0 }' <(merge_logs reach.csv)
 fi
 
-UPT="$DIR/uptime.csv"
-if [ -f "$UPT" ]; then
+if has_logs uptime.csv; then
   echo
   echo "--- Běh měření (kdy skript/počítač neběžel) ---"
   awk -F, -v thr=150 '
@@ -70,7 +79,7 @@ if [ -f "$UPT" ]; then
       cov=(span>0)?up/span*100:100
       printf "pokrytí: %.1f%%   doba běhu: %s   mimo provoz: %s   přerušení: %d\n", cov, dur(up), dur(down), ng
       for(i=0;i<ng;i++) print info[i]
-    }' "$UPT"
+    }' <(merge_logs uptime.csv)
 fi
 
 if [ -x "$DIR/events.sh" ]; then

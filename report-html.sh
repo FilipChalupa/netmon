@@ -3,9 +3,19 @@
 # Použití: ./report-html.sh   ->  vytvoří report.html (otevři v prohlížeči)
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAT="$DIR/latency.csv"; SPD="$DIR/speed.csv"; OUT="$DIR/report.html"
+LOG_ROOT="$DIR/log"; OUT="$DIR/report.html"
 
-[ -f "$LAT" ] || { echo "Chybí $LAT — nejdřív spusť měření."; exit 1; }
+# Sloučí denní CSV (log/RRRRMMDD/<jméno>) do jednoho proudu — hlavička jen jednou.
+merge_logs() {
+  local name="$1" first=1 f
+  for f in "$LOG_ROOT"/*/"$name"; do
+    [ -f "$f" ] || continue
+    if [ "$first" = 1 ]; then cat "$f"; first=0; else tail -n +2 "$f"; fi
+  done
+}
+has_logs() { local f; for f in "$LOG_ROOT"/*/"$1"; do [ -f "$f" ] && return 0; done; return 1; }
+
+has_logs latency.csv || { echo "Chybí logy v $LOG_ROOT — nejdřív spusť měření."; exit 1; }
 
 # --- Souhrnné karty (per cíl): vzorky, ztráta %, avg/min/max latence ---
 SUMMARY_JSON=$(awk -F, '
@@ -24,7 +34,7 @@ SUMMARY_JSON=$(awk -F, '
         t, tot[t], (loss[t]/tot[t])*100, (n[t]?sum[t]/n[t]:0), min[t]+0, max[t]+0
     }
     printf "]"
-  }' "$LAT")
+  }' <(merge_logs latency.csv))
 
 # --- Časová osa: latence (avg za minutu) a ztráty (% za minutu) per cíl ---
 LAT_SERIES=$(awk -F, '
@@ -52,11 +62,11 @@ LAT_SERIES=$(awk -F, '
       printf "]}"
     }
     printf "}}"
-  }' "$LAT")
+  }' <(merge_logs latency.csv))
 
 # --- Rychlost v čase ---
 SPD_SERIES='{"labels":[],"mbps":[]}'
-if [ -f "$SPD" ]; then
+if has_logs speed.csv; then
   SPD_SERIES=$(awk -F, '
     BEGIN{ n=0 }
     NR>1 && $2!="" { lab[n]=substr($1,1,16); val[n]=$2; n++ }
@@ -66,13 +76,12 @@ if [ -f "$SPD" ]; then
       printf "],\"mbps\":["
       for(i=0;i<n;i++) printf "%s%s",(i?",":""),val[i]
       printf "]}"
-    }' "$SPD")
+    }' <(merge_logs speed.csv))
 fi
 
 # --- Dosažitelnost (DNS/TCP/TLS) v čase: avg za minutu ---
-RCH="$DIR/reach.csv"
 RCH_SERIES='{"labels":[],"dns":[],"tcp":[],"tls":[],"fails":0}'
-if [ -f "$RCH" ]; then
+if has_logs reach.csv; then
   RCH_SERIES=$(awk -F, '
     NR>1 && $6=="ok" { b=substr($1,1,16); if(!(b in seen)){seen[b]=1;ord[m++]=b}
       d[b]+=$2; t[b]+=$3; l[b]+=$4; n[b]++ }
@@ -85,7 +94,7 @@ if [ -f "$RCH" ]; then
       printf "],\"tcp\":["; for(i=0;i<m;i++){b=ord[i];printf "%s%.1f",(i?",":""),t[b]/n[b]}
       printf "],\"tls\":["; for(i=0;i<m;i++){b=ord[i];printf "%s%.1f",(i?",":""),l[b]/n[b]}
       printf "],\"fails\":%d}", fails+0
-    }' "$RCH")
+    }' <(merge_logs reach.csv))
 fi
 
 # --- Výpadky: přegeneruj events.csv a načti jako JSON ---
@@ -101,9 +110,8 @@ fi
 # --- Běh skriptu: z uptime.csv odvoď, kdy měření neběželo (mezery mezi tepy) ---
 # Mezera mezi sousedními záznamy větší než DOWN_THRESHOLD = skript byl vypnutý
 # nebo neběžel celý počítač. STOP před mezerou = řízené zastavení; jinak pád/odpojení.
-UPT="$DIR/uptime.csv"
 UPTIME_JSON='{"first":"","last":"","spanSec":0,"downSec":0,"gaps":[]}'
-if [ -f "$UPT" ]; then
+if has_logs uptime.csv; then
   UPTIME_JSON=$(awk -F, -v thr=150 '
     BEGIN{ ng=0; down=0 }
     function epoch(t,   Y,Mo,D,h,mi,s){
@@ -129,12 +137,12 @@ if [ -f "$UPT" ]; then
       printf "{\"first\":\"%s\",\"last\":\"%s\",\"spanSec\":%d,\"downSec\":%d,\"gaps\":[",first,last,span,down+0
       for(i=0;i<ng;i++) printf "%s%s",(i?",":""),g[i]
       printf "]}"
-    }' "$UPT")
+    }' <(merge_logs uptime.csv))
 fi
 
 # --- Meta: rozsah a délka měření ---
 META_JSON=$(awk -F, 'NR>1 && $1!="" && $2!="--"{ if(first=="")first=$1; last=$1 } END{
-  printf "{\"first\":\"%s\",\"last\":\"%s\"}", first, last }' "$LAT")
+  printf "{\"first\":\"%s\",\"last\":\"%s\"}", first, last }' <(merge_logs latency.csv))
 GEN_TS=$(date "+%Y-%m-%d %H:%M:%S %Z")
 
 cat > "$OUT" <<HTMLEOF
