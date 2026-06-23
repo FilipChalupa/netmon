@@ -1,2 +1,19 @@
 # logy měření (log/RRRRMMDD/*.csv) — generují se za běhu
 log/
+
+# staré ploché CSV v kořeni — nahrazeno log/RRRRMMDD/
+/latency.csv
+/speed.csv
+/reach.csv
+/uptime.csv
+/events.csv
+
+# zálohy logů (generuje reset.sh)
+/archiv/
+
+# generovaný HTML report
+/report.html
+
+# runtime soubory procesu
+/netmon.run.log
+/netmon.pid
