@@ -226,3 +226,8 @@ with cursors and token auth, and alerting (thresholds, dedup, recovery).
   data, so the server SQLite on the Coolify volume is the only long-term
   copy. If the history matters, enable a volume backup in Coolify (or a
   `sqlite3 .backup` cron / Litestream).
+- **Long-term DB growth** — latency grows by roughly 400k rows/day for
+  three networks (a few GB per year). Charts stay fast thanks to SQL
+  bucketing over indexes, but eventually raw pings older than ~90 days
+  could be downsampled into per-minute aggregates (avg rtt, loss count per
+  target) and dropped, keeping derived events intact.
