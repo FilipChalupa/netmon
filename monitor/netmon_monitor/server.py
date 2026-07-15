@@ -1,11 +1,11 @@
-"""Mini HTTP API pro evaluation server (pull přes Tailscale).
+"""Mini HTTP API for the evaluation server (pull over Tailscale).
 
-Endpointy:
+Endpoints:
   GET /api/health                          → {status, time, started_at}
   GET /api/info                            → {network, version, hostname, targets, intervals}
   GET /api/data/{kind}?after_id=N&limit=M  → {kind, rows, last_id, more}
 
-Autentizace: hlavička X-Netmon-Token (jen když je token v configu).
+Authentication: X-Netmon-Token header (only when a token is configured).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def make_handler(cfg: Config, db_path: str, started_at: str):
     class Handler(http.server.BaseHTTPRequestHandler):
         server_version = f"netmon-monitor/{VERSION}"
 
-        def log_message(self, fmt, *args):  # ticho v journalu, chyby řeší error kódy
+        def log_message(self, fmt, *args):  # keep the journal quiet; errors show as status codes
             pass
 
         def _send_json(self, code: int, payload: dict) -> None:
@@ -51,7 +51,7 @@ def make_handler(cfg: Config, db_path: str, started_at: str):
             path = parsed.path.rstrip("/")
 
             if not self._check_token():
-                self._send_json(401, {"error": "neplatný token"})
+                self._send_json(401, {"error": "invalid token"})
                 return
 
             if path == "/api/health":
@@ -72,21 +72,21 @@ def make_handler(cfg: Config, db_path: str, started_at: str):
             elif path.startswith("/api/data/"):
                 kind = path.removeprefix("/api/data/")
                 if kind not in KIND_COLUMNS:
-                    self._send_json(404, {"error": f"neznámý druh dat: {kind}"})
+                    self._send_json(404, {"error": f"unknown data kind: {kind}"})
                     return
                 q = urllib.parse.parse_qs(parsed.query)
                 try:
                     after_id = int(q.get("after_id", ["0"])[0])
                     limit = int(q.get("limit", [str(DEFAULT_LIMIT)])[0])
                 except ValueError:
-                    self._send_json(400, {"error": "after_id a limit musí být čísla"})
+                    self._send_json(400, {"error": "after_id and limit must be integers"})
                     return
                 limit = max(1, min(limit, MAX_LIMIT))
                 rows, more = fetch_after(db_path, kind, after_id, limit)
                 last_id = rows[-1]["id"] if rows else after_id
                 self._send_json(200, {"kind": kind, "rows": rows, "last_id": last_id, "more": more})
             else:
-                self._send_json(404, {"error": "neznámá cesta"})
+                self._send_json(404, {"error": "unknown path"})
 
     return Handler
 

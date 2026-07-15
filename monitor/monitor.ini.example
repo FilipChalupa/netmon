@@ -1,32 +1,32 @@
-# netmon monitor — konfigurace agenta
-# Zkopíruj do ~/.config/netmon/monitor.ini a uprav.
+# netmon monitor — agent configuration
+# Copy to ~/.config/netmon/monitor.ini and edit.
 
 [monitor]
-# Jméno sítě — musí odpovídat záznamu v monitors.toml na evaluation serveru.
-network = doma
-# Port mini HTTP API (evaluation server ho čte přes Tailscale).
+# Network name — must match the entry in monitors.toml on the evaluation server.
+network = home
+# Port of the mini HTTP API (the evaluation server reads it over Tailscale).
 port = 8787
-# Na čem poslouchat. 0.0.0.0 = všude; můžeš zúžit na Tailscale IP (100.x.y.z).
+# Address to listen on. 0.0.0.0 = everywhere; narrow to the Tailscale IP (100.x.y.z) if you like.
 bind = 0.0.0.0
-# Sdílený token (hlavička X-Netmon-Token). Prázdné = bez kontroly.
+# Shared token (X-Netmon-Token header). Empty = no check.
 token =
-# Kam ukládat lokální SQLite databázi měření.
+# Where to store the local SQLite measurement database.
 db_path = ~/.local/share/netmon/monitor.db
-# Jak dlouho držet lokální data (evaluation server si je průběžně stahuje).
+# How long to keep local data (the evaluation server pulls it continuously).
 retention_days = 90
 
 [probes]
-# Sekund mezi koly pingů / čekání na odpověď.
+# Seconds between ping rounds / waiting for a reply.
 ping_interval = 2
 ping_timeout = 2
-# Cíle pingu: jméno=IP, brána = auto (detekce z výchozí trasy).
+# Ping targets: name=IP; gateway = auto (detected from the default route).
 targets = gateway=auto, quad9=9.9.9.9, google=8.8.8.8
-# Reach sonda (DNS/TCP/TLS) — interval a cíl.
+# Reach probe (DNS/TCP/TLS) — interval and target.
 reach_interval = 30
 reach_url = https://www.google.com/generate_204
-# Test rychlosti — interval (3600 = 1×/h), objem (50 MB ≈ 1,2 GB/den).
+# Speed test — interval (3600 = hourly), size (50 MB ≈ 1.2 GB/day).
 speed_interval = 3600
 speed_bytes = 50000000
 speed_url = https://speed.cloudflare.com/__down?bytes={bytes}
-# Tep do uptime záznamů (detekce, kdy měření neběželo).
+# Heartbeat into the uptime log (detects when measuring wasn't running).
 heartbeat_interval = 60

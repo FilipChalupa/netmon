@@ -1,10 +1,10 @@
-"""Lokální SQLite úložiště měření.
+"""Local SQLite storage for measurements.
 
-Jeden zapisovací spoj chráněný zámkem (vlákna sond); HTTP handlery čtou
-vlastními krátkodobými spoji — WAL režim souběžné čtení umožňuje.
+One writer connection guarded by a lock (probe threads); HTTP handlers read
+through their own short-lived connections — WAL mode allows concurrent reads.
 
-AUTOINCREMENT je záměr: retenční mazání nesmí recyklovat id, jinak by se
-rozbily sync kurzory evaluation serveru (after_id).
+AUTOINCREMENT is deliberate: retention deletes must never recycle row ids,
+otherwise the evaluation server's sync cursors (after_id) would break.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS uptime(
 CREATE INDEX IF NOT EXISTS idx_uptime_ts ON uptime(ts_epoch);
 """
 
-# sloupce vracené přes API, v pořadí pro JSON řádky
+# columns returned by the API, in JSON row order
 KIND_COLUMNS = {
     "latency": ["id", "ts_epoch", "ts_iso", "target", "ip", "status", "rtt_ms"],
     "reach": ["id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],
@@ -110,7 +110,7 @@ class Db:
         )
 
     def purge(self, retention_days: int) -> int:
-        """Smaže záznamy starší než retention_days. Vrací počet smazaných řádků."""
+        """Delete records older than retention_days. Returns deleted row count."""
         cutoff = time.time() - retention_days * 86400
         deleted = 0
         with self._lock:
@@ -126,9 +126,9 @@ class Db:
 
 
 def fetch_after(db_path: str, kind: str, after_id: int, limit: int) -> tuple[list[dict], bool]:
-    """Čtení pro HTTP API — vlastní krátkodobý spoj (volá se z HTTP vláken).
+    """Read path for the HTTP API — own short-lived connection (HTTP threads).
 
-    Vrací (rows, more): limit+1 řádků říká, že existují další.
+    Returns (rows, more): fetching limit+1 rows reveals whether more exist.
     """
     cols = KIND_COLUMNS[kind]
     conn = sqlite3.connect(db_path)

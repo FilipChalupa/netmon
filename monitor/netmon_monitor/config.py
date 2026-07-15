@@ -1,4 +1,4 @@
-"""Načtení konfigurace z INI souboru (configparser — funguje i na Py 3.10)."""
+"""Configuration loading from an INI file (configparser — works on Py 3.10+)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 @dataclass
 class Config:
     # [monitor]
-    network: str = "sit"
+    network: str = "net"
     port: int = 8787
     bind: str = "0.0.0.0"
     token: str = ""
@@ -20,7 +20,7 @@ class Config:
     # [probes]
     ping_interval: float = 2.0
     ping_timeout: float = 2.0
-    # dvojice (jméno, IP nebo "auto" = brána z výchozí trasy)
+    # pairs of (name, IP or "auto" = gateway from the default route)
     targets: list[tuple[str, str]] = field(default_factory=lambda: [
         ("gateway", "auto"),
         ("quad9", "9.9.9.9"),
@@ -49,10 +49,10 @@ def parse_targets(raw: str) -> list[tuple[str, str]]:
             continue
         name, _, ip = part.partition("=")
         if not name or not ip:
-            raise ValueError(f"Neplatný cíl pingu: {part!r} (očekávám 'jméno=IP')")
+            raise ValueError(f"Invalid ping target: {part!r} (expected 'name=IP')")
         out.append((name.strip(), ip.strip()))
     if not out:
-        raise ValueError("Prázdný seznam cílů pingu")
+        raise ValueError("Empty ping target list")
     return out
 
 
@@ -60,7 +60,7 @@ def load_config(path: str) -> Config:
     cp = configparser.ConfigParser()
     read = cp.read(os.path.expanduser(path))
     if not read:
-        raise FileNotFoundError(f"Konfigurační soubor nenalezen: {path}")
+        raise FileNotFoundError(f"Config file not found: {path}")
 
     cfg = Config()
     m = cp["monitor"] if cp.has_section("monitor") else {}

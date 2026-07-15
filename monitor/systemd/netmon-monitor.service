@@ -1,5 +1,5 @@
 [Unit]
-Description=netmon monitor — měření kvality připojení
+Description=netmon monitor — connection quality measurement
 After=network-online.target
 Wants=network-online.target
 

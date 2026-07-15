@@ -1,4 +1,4 @@
-"""Vlákna měřicích smyček. Všechny smyčky sdílejí jeden stop Event."""
+"""Measurement loop threads. All loops share a single stop Event."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def now_iso() -> str:
 
 
 class TargetSet:
-    """Cíle pingu s automatickou re-detekcí brány (target s IP 'auto')."""
+    """Ping targets with automatic gateway re-detection (target with IP 'auto')."""
 
     def __init__(self, cfg: Config):
         self._spec = cfg.targets
@@ -37,7 +37,7 @@ class TargetSet:
                         self._gateway_ip = detected
                     self._detected_at = now
                 if self._gateway_ip is None:
-                    continue  # brána zatím nezjištěna — cíl v tomto kole vynecháme
+                    continue  # gateway unknown yet — skip this target this round
                 out.append((name, self._gateway_ip))
             else:
                 out.append((name, ip))
@@ -66,7 +66,7 @@ def ping_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
             next_t += cfg.ping_interval
             delay = next_t - time.monotonic()
             if delay < 0:
-                next_t = time.monotonic()  # kolo se protáhlo — nedoháníme skluz
+                next_t = time.monotonic()  # round overran — don't try to catch up
                 delay = 0
             stop.wait(delay)
     finally:
@@ -74,14 +74,14 @@ def ping_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
 
 
 def reach_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
-    while not stop.is_set():  # první sonda hned po startu (reference), jako v bashi
+    while not stop.is_set():  # first probe right at startup (baseline), like bash
         dns_ms, tcp_ms, tls_ms, code, status = probes.reach_probe(cfg.reach_url)
         db.insert_reach(time.time(), now_iso(), dns_ms, tcp_ms, tls_ms, code, status)
         stop.wait(cfg.reach_interval)
 
 
 def speed_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
-    while not stop.is_set():  # první test hned po startu, pak každou hodinu
+    while not stop.is_set():  # first test right at startup, then hourly
         mbps, bytes_, seconds, code = probes.speed_test(
             cfg.resolved_speed_url(), stop=stop
         )

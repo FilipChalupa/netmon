@@ -1,3 +1,3 @@
-"""netmon monitor — měřicí agent (stdlib-only)."""
+"""netmon monitor — measuring agent (stdlib-only)."""
 
 VERSION = "2.0.0"

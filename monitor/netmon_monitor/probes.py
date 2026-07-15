@@ -1,4 +1,4 @@
-"""Měřicí sondy — vše přes stdlib (subprocess ping, sockety, urllib)."""
+"""Measurement probes — stdlib only (subprocess ping, sockets, urllib)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ _RTT_RE = re.compile(r"time=([0-9.]+) ms")
 
 
 def detect_gateway(fallback: str | None = None) -> str | None:
-    """IP výchozí brány z `ip route show default` (přežije změnu sítě)."""
+    """Default gateway IP from `ip route show default` (survives network changes)."""
     try:
         out = subprocess.run(
             ["ip", "route", "show", "default"],
@@ -29,7 +29,7 @@ def detect_gateway(fallback: str | None = None) -> str | None:
 
 
 def ping_target(ip: str, timeout: float) -> tuple[str, float | None]:
-    """Jeden ping. Vrací ("ok", rtt_ms) nebo ("LOSS", None)."""
+    """Single ping. Returns ("ok", rtt_ms) or ("LOSS", None)."""
     try:
         res = subprocess.run(
             ["ping", "-n", "-c", "1", "-W", str(int(timeout)), ip],
@@ -44,10 +44,10 @@ def ping_target(ip: str, timeout: float) -> tuple[str, float | None]:
 
 
 def reach_probe(url: str, total_timeout: float = 10.0):
-    """Změří fáze DNS resolu / TCP connectu / TLS handshaku + HTTP status.
+    """Time the DNS resolve / TCP connect / TLS handshake phases + HTTP status.
 
-    Vrací (dns_ms, tcp_ms, tls_ms, http_code, status) — při selhání
-    (None, None, None, 0, "FAIL"), stejně jako FAIL řádky v bashové verzi.
+    Returns (dns_ms, tcp_ms, tls_ms, http_code, status) — on failure
+    (None, None, None, 0, "FAIL"), matching the FAIL rows of the bash version.
     """
     parsed = urllib.parse.urlsplit(url)
     host = parsed.hostname or ""
@@ -105,11 +105,11 @@ def reach_probe(url: str, total_timeout: float = 10.0):
 
 
 def speed_test(url: str, max_time: float = 120.0, stop=None):
-    """Stáhne testovací soubor a změří propustnost.
+    """Download a test file and measure throughput.
 
-    Vrací (down_mbps, bytes, seconds, http_code) — při selhání
-    (None, None, seconds|None, 0). `stop` (threading.Event) přeruší
-    stahování mezi chunky, ať ukončení služby nečeká na celý test.
+    Returns (down_mbps, bytes, seconds, http_code) — on failure
+    (None, None, seconds|None, 0). `stop` (threading.Event) aborts the
+    download between chunks so service shutdown never waits for a full test.
     """
     start = time.monotonic()
     try:

@@ -1,4 +1,4 @@
-"""Vstupní bod: python3 -m netmon_monitor --config ~/.config/netmon/monitor.ini"""
+"""Entry point: python3 -m netmon_monitor --config ~/.config/netmon/monitor.ini"""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from .workers import now_iso, start_workers
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(prog="netmon_monitor", description="netmon měřicí agent")
+    ap = argparse.ArgumentParser(prog="netmon_monitor", description="netmon measuring agent")
     ap.add_argument("--config", default="~/.config/netmon/monitor.ini",
-                    help="cesta ke konfiguraci (výchozí: ~/.config/netmon/monitor.ini)")
+                    help="config path (default: ~/.config/netmon/monitor.ini)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -30,8 +30,8 @@ def main() -> int:
 
     started_at = now_iso()
     db.insert_uptime(time.time(), started_at, "START")
-    print(f"netmon monitor v{VERSION} — síť '{cfg.network}', DB {cfg.resolved_db_path()}, "
-          f"API na {cfg.bind}:{cfg.port}", flush=True)
+    print(f"netmon monitor v{VERSION} — network '{cfg.network}', DB {cfg.resolved_db_path()}, "
+          f"API on {cfg.bind}:{cfg.port}", flush=True)
 
     httpd = create_server(cfg, cfg.resolved_db_path(), started_at)
     http_thread = threading.Thread(target=httpd.serve_forever, name="http")
@@ -40,14 +40,14 @@ def main() -> int:
     threads = start_workers(cfg, db, stop)
 
     stop.wait()
-    print("Zastavuji…", flush=True)
+    print("Stopping…", flush=True)
     httpd.shutdown()
     http_thread.join()
     for t in threads:
         t.join(timeout=10)
     db.insert_uptime(time.time(), now_iso(), "STOP")
     db.close()
-    print("Zastaveno.", flush=True)
+    print("Stopped.", flush=True)
     return 0
 
 
