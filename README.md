@@ -55,8 +55,22 @@ sudo nano /etc/netmon/monitor.ini && sudo systemctl restart netmon-monitor
 sudo ./install.sh --system --uninstall   # removal (keeps config + data)
 ```
 
-For an unprivileged LXC with Tailscale, allow `/dev/net/tun` in the
-container config (standard Tailscale-in-LXC setup).
+Notes for (unprivileged) LXC containers:
+
+- **Clone outside `/root` and `/home`** (e.g. `/opt/netmon`) — the service
+  runs as the `netmon` user, which cannot traverse private home directories.
+  The installer refuses such paths with a hint.
+- **ICMP for the service user**: in an unprivileged LXC, `ping` works for
+  root but not for the `netmon` user (file capabilities don't apply), which
+  shows up as 100 % packet loss while speed/reach work fine. Fix inside the
+  container — note the upper bound must stay within the container's mapped
+  GIDs, `2147483647` is rejected with *Invalid argument*:
+  ```bash
+  echo 'net.ipv4.ping_group_range = 0 65534' > /etc/sysctl.d/99-ping.conf
+  sysctl --system && systemctl restart netmon-monitor
+  ```
+- For Tailscale in an unprivileged LXC, allow `/dev/net/tun` in the
+  container config (standard Tailscale-in-LXC setup).
 
 Configuration (`monitor.ini`): ping targets (`gateway=auto` = default-route
 detection), intervals (ping 2 s, reach 30 s, speed hourly, heartbeat 1/min),
@@ -72,16 +86,28 @@ server share a tailnet and `monitors.toml` uses the 100.x addresses (or
 MagicDNS names). On the Coolify host it's enough to run `tailscaled` —
 containers on the default bridge reach the tailnet through the host's
 tunnel. The `X-Netmon-Token` header is a second layer of protection.
+A monitor on the **same LAN** as the server needs no Tailscale at all —
+just use its LAN IP in `monitors.toml`.
+
+Alternative without Tailscale on the server: if some other host on the LAN
+already runs Tailscale, route the whole LAN through it — a static route on
+the router (`100.64.0.0/10 → <tailscale host>`) plus masquerade on that
+host (`iptables -t nat -A POSTROUTING -s <LAN subnet> -o tailscale0 -j
+MASQUERADE`, persisted). Do **not** use `--exit-node` or `--accept-routes`
+on LAN clients — accepting a route to your own subnet creates a loop.
 
 ## Deploying the evaluation server (Coolify / Docker)
 
-1. In Coolify create an application from this repo, building from `server/`
-   (Dockerfile).
-2. Attach a volume at `/data` and upload `monitors.toml` into it
-   (see `server/config/monitors.toml.example` — network name, Tailscale URL, token).
+1. In Coolify create an application from this repo: Build Pack **Dockerfile**,
+   Base Directory **`/server`**, Ports Exposes **8000**.
+2. Storages: a **volume mount** at `/data` (SQLite database) and a **file
+   mount** at `/data/monitors.toml` with the monitor list
+   (see `server/config/monitors.toml.example` — network name, URL, token;
+   watch out for stray whitespace in `name`, it must match `monitor.ini`
+   exactly).
 3. Environment variables per `.env.example` (`NETMON_TZ`, optionally `SMTP_*`).
-4. Web protection: the app has no auth of its own — configure it at the
-   Coolify/Traefik level (basic auth middleware) if the URL is public.
+4. Web protection: the app has no auth of its own — protect it at the proxy
+   level (Traefik basic auth / Cloudflare Access) if the URL is public.
 
 Locally: `cd server && docker compose up` → http://localhost:8000
 
@@ -115,6 +141,8 @@ secret string), open `/import`, pick the network (must match the
 `monitors.toml` name for live networks) and upload a `.zip` / `.tar.gz`
 archive of the `log/` tree (nesting like `log-mpc/20260616/…` is fine).
 Deduplication is content-based, so re-uploading the same data is safe.
+Importing is typically a one-off: unset `NETMON_IMPORT_TOKEN` afterwards to
+lock the page again (uploads are disabled while it is empty).
 
 **Via the CLI:**
 
@@ -190,7 +218,7 @@ Server (`:8000`): `GET /` dashboard · `GET /net/{name}?range=day|week|all&date=
 ## Tests
 
 ```bash
-pip install pytest httpx fastapi   # + tomli on Python < 3.11
+pip install pytest httpx fastapi python-multipart   # + tomli on Python < 3.11
 python -m pytest tests/
 ```
 
