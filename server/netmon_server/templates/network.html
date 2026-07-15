@@ -4,18 +4,6 @@
 <h1>{{ net.label }}</h1>
 <div class="sub" id="period">Connection quality on the “{{ net.label }}” network</div>
 {% include "_range.html" %}
-{% if admin_enabled and range == 'day' %}
-<form method="post" action="/net/{{ net.name }}/delete-day" class="range"
-      onsubmit="return confirm('Delete ALL data of {{ net.label }} for {{ date }}? This cannot be undone.')">
-  <input type="hidden" name="date" value="{{ date }}">
-  <input type="password" name="token" placeholder="admin token" required
-         style="padding:5px 10px;border-radius:8px;border:1px solid #334155;background:var(--card);color:var(--fg)">
-  <button type="submit"
-          style="padding:5px 12px;border-radius:8px;border:1px solid var(--bad);background:transparent;color:var(--bad);cursor:pointer">
-    🗑 Delete this day
-  </button>
-</form>
-{% endif %}
 <div class="cards" id="cards"></div>
 <div class="panel"><h2>⏱️ Measurement uptime</h2><div id="uptime"><p class="empty">Loading…</p></div></div>
 <div class="panel"><h2>🛑 Outages</h2><div id="events"><p class="empty">Loading…</p></div></div>

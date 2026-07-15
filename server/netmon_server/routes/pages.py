@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import datetime
-import hmac
-import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ..db import connect, get_network
-from ..timerange import day_bounds, resolve_range
+from ..timerange import resolve_range
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -59,47 +57,9 @@ def network_detail(request: Request, name: str, range: str = "day", date: str | 
         nets = _networks(conn)
     finally:
         conn.close()
-    ctx = {"net": dict(net), "networks": [dict(n) for n in nets],
-           "admin_enabled": bool(request.app.state.cfg.admin_token)}
+    ctx = {"net": dict(net), "networks": [dict(n) for n in nets]}
     ctx.update(_range_ctx(request, range, date))
     return templates.TemplateResponse(request, "network.html", ctx)
-
-
-@router.post("/net/{name}/delete-day")
-async def delete_day(request: Request, name: str):
-    """Temporary admin action: wipe one day of a network's data (all kinds).
-
-    Gated by NETMON_ADMIN_TOKEN. Deleted rows are never re-synced — the sync
-    cursor is already past their ids — so this leaves a permanent hole.
-    """
-    cfg = request.app.state.cfg
-    if not cfg.admin_token:
-        raise HTTPException(403, "Admin actions are disabled — set NETMON_ADMIN_TOKEN.")
-    # parse the urlencoded form manually — no python-multipart dependency
-    params = urllib.parse.parse_qs((await request.body()).decode())
-    token = params.get("token", [""])[0]
-    date = params.get("date", [""])[0]
-    if not hmac.compare_digest(token.strip(), cfg.admin_token):
-        raise HTTPException(403, "Invalid admin token.")
-    try:
-        day = datetime.date.fromisoformat(date)
-    except ValueError:
-        raise HTTPException(400, f"Invalid date: {date}")
-
-    t0, t1 = day_bounds(day, cfg.tz)
-    conn = connect(cfg.db_path)
-    try:
-        net = get_network(conn, name)
-        if not net:
-            raise HTTPException(404, f"Unknown network: {name}")
-        with conn:
-            for table in ("latency", "reach", "speed", "uptime"):
-                conn.execute(
-                    f"DELETE FROM {table} WHERE network_id=? AND ts_epoch>=? AND ts_epoch<?",
-                    (net["id"], t0, t1))
-    finally:
-        conn.close()
-    return RedirectResponse(f"/net/{name}?range=day&date={date}", status_code=303)
 
 
 @router.get("/compare", response_class=HTMLResponse)
