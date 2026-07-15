@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import hmac
+import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -74,9 +75,10 @@ async def delete_day(request: Request, name: str):
     cfg = request.app.state.cfg
     if not cfg.admin_token:
         raise HTTPException(403, "Admin actions are disabled — set NETMON_ADMIN_TOKEN.")
-    form = await request.form()  # plain urlencoded form, no multipart needed
-    token = str(form.get("token", ""))
-    date = str(form.get("date", ""))
+    # parse the urlencoded form manually — no python-multipart dependency
+    params = urllib.parse.parse_qs((await request.body()).decode())
+    token = params.get("token", [""])[0]
+    date = params.get("date", [""])[0]
     if not hmac.compare_digest(token.strip(), cfg.admin_token):
         raise HTTPException(403, "Invalid admin token.")
     try:
