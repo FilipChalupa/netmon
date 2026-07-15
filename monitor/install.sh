@@ -38,8 +38,18 @@ if [ "$SYSTEM" = 1 ]; then
     exit 0
   fi
 
-  command -v python3 >/dev/null || { echo "python3 is missing."; exit 1; }
+  command -v python3 >/dev/null || { echo "python3 is missing (apt install python3)."; exit 1; }
   command -v ping >/dev/null || { echo "ping is missing (apt install iputils-ping)."; exit 1; }
+
+  # the service runs as the 'netmon' user, which cannot traverse /root or /home/<user>
+  case "$DIR" in
+    /root/*|/home/*)
+      REPO_ROOT="$(dirname "$DIR")"
+      echo "ERROR: $DIR is not accessible to the 'netmon' service user (it lives under a private home directory)."
+      echo "Move the checkout somewhere world-readable and re-run, e.g.:"
+      echo "  mv $REPO_ROOT /opt/netmon && cd /opt/netmon/monitor && sudo ./install.sh --system"
+      exit 1 ;;
+  esac
 
   id netmon >/dev/null 2>&1 || \
     useradd --system --home-dir /var/lib/netmon --shell /usr/sbin/nologin netmon
