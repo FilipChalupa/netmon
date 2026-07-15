@@ -11,6 +11,10 @@ variables as daily reports; without SMTP configured it stays idle.
   (a backfill after a long monitor gap doesn't flood the inbox).
 - Monitor offline: sync hasn't succeeded for NETMON_ALERT_OFFLINE_S
   (default 600 s) → one email; recovery sends a follow-up and re-arms.
+- Reach failure: NETMON_ALERT_REACH_FAILS consecutive reach probe FAILs
+  (default 10 ≈ 5 min) → "pings work but the internet doesn't" (DNS or
+  filtered traffic). Suppressed when a ping-derived outage overlaps the
+  run, so a hard outage doesn't send two emails.
 
 Note: a monitor being offline usually just delays outage alerts — the
 monitor keeps measuring locally and events are derived after backfill.
@@ -59,9 +63,8 @@ def _clear_sent(conn: sqlite3.Connection, network_id: int, kind: str, key: str) 
     conn.commit()
 
 
-def _check_outages(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float) -> list[str]:
-    events = derive_events(conn, net["id"], now - cfg.alert_lookback_s, now,
-                           cfg.ping_interval)
+def _check_outages(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float,
+                   events) -> list[str]:
     fresh = [e for e in events
              if e.duration_s >= cfg.alert_min_outage_s
              and not _already_sent(conn, net["id"], "outage", f"{e.start_epoch:.0f}")]
@@ -80,6 +83,56 @@ def _check_outages(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float)
             _mark_sent(conn, net["id"], "outage", f"{e.start_epoch:.0f}")
         return [subject]
     return []
+
+
+def _check_reach(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float,
+                 events) -> list[str]:
+    """Runs of consecutive reach FAILs — "pings work, the internet doesn't"."""
+    rows = conn.execute(
+        "SELECT ts_epoch, ts_iso, status FROM reach "
+        "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
+        (net["id"], now - cfg.alert_lookback_s, now),
+    ).fetchall()
+
+    runs = []  # {"start", "start_iso", "end", "count"} of consecutive FAILs
+    cur = None
+    for r in rows:
+        if r["status"] == "FAIL":
+            if cur is None:
+                cur = {"start": r["ts_epoch"], "start_iso": r["ts_iso"],
+                       "end": r["ts_epoch"], "count": 1}
+            else:
+                cur["end"] = r["ts_epoch"]
+                cur["count"] += 1
+        elif cur is not None:
+            runs.append(cur)
+            cur = None
+    if cur is not None:
+        runs.append(cur)
+
+    sent = []
+    for run in runs:
+        if run["count"] < cfg.alert_reach_fails:
+            continue
+        # a hard outage already alerts via _check_outages — don't double-report
+        if any(e.start_epoch <= run["end"] and e.end_epoch >= run["start"]
+               for e in events):
+            continue
+        key = f"{run['start']:.0f}"
+        if _already_sent(conn, net["id"], "reach", key):
+            continue
+        subject = (f"netmon ALERT: internet failing on {net['label']} "
+                   f"(reach probes down, pings OK)")
+        body = (f"Network: {net['label']} ({net['name']})\n\n"
+                f"{run['count']} consecutive reachability probes (DNS/TCP/TLS) "
+                f"have failed since {run['start_iso']}, while pings still get "
+                f"through.\nTypical causes: broken DNS or filtered/dropped "
+                f"traffic at the provider.\n\n"
+                f"An ongoing failure is reported once.")
+        if send_email(subject, body):
+            _mark_sent(conn, net["id"], "reach", key)
+            sent.append(subject)
+    return sent
 
 
 def _check_offline(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float) -> list[str]:
@@ -118,7 +171,10 @@ def check_once(conn: sqlite3.Connection, cfg: ServerConfig,
     sent: list[str] = []
     for net in conn.execute("SELECT * FROM networks ORDER BY name").fetchall():
         try:
-            sent += _check_outages(conn, cfg, net, now)
+            events = derive_events(conn, net["id"], now - cfg.alert_lookback_s,
+                                   now, cfg.ping_interval)
+            sent += _check_outages(conn, cfg, net, now, events)
+            sent += _check_reach(conn, cfg, net, now, events)
             sent += _check_offline(conn, cfg, net, now)
         except Exception:
             log.exception("alert check failed for %s", net["name"])

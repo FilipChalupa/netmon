@@ -168,6 +168,10 @@ batch of events is grouped into a single email):
 
 - **Outage** — a derived outage (local/internet) lasting at least
   `NETMON_ALERT_MIN_OUTAGE_S` (default 60 s).
+- **Reach failure** — `NETMON_ALERT_REACH_FAILS` consecutive reach probe
+  failures (default 10 ≈ 5 min): "pings work but the internet doesn't"
+  (broken DNS, filtered traffic). Suppressed while a ping-derived outage
+  overlaps, so a hard outage sends a single email.
 - **Monitor unreachable** — sync has been failing for
   `NETMON_ALERT_OFFLINE_S` (default 600 s); a recovery email follows when it
   comes back. Note this only delays outage alerts: the monitor keeps

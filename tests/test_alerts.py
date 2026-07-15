@@ -44,6 +44,16 @@ def _internet_outage(conn, nid, start, rounds):
     conn.commit()
 
 
+def _reach_fails(conn, nid, start, count, status="FAIL"):
+    """Insert `count` consecutive reach probes (30 s apart)."""
+    for i in range(count):
+        ts = start + 30 * i
+        conn.execute(
+            "INSERT INTO reach(network_id, ts_epoch, ts_iso, status) VALUES(?,?,?,?)",
+            (nid, ts, f"R{ts:.0f}", status))
+    conn.commit()
+
+
 def test_outage_alert_and_dedup(conn, cfg, sent):
     nid = get_or_create_network(conn, "testnet", "Test net")
     now = time.time()
@@ -76,6 +86,37 @@ def test_ongoing_outage_alerts_once(conn, cfg, sent):
     _internet_outage(conn, nid, now - 200 + 120, rounds=30)
     assert alerts.check_once(conn, cfg, now + 60) == []
     assert len(sent) == 1
+
+
+def test_reach_alert_and_dedup(conn, cfg, sent):
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _reach_fails(conn, nid, now - 600, count=12)  # 12 consecutive FAILs ≥ threshold 10
+
+    assert len(alerts.check_once(conn, cfg, now)) == 1
+    assert "reach probes down" in sent[0][0]
+    assert alerts.check_once(conn, cfg, now) == []  # dedup
+    assert len(sent) == 1
+
+
+def test_short_reach_run_is_ignored(conn, cfg, sent):
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _reach_fails(conn, nid, now - 600, count=5)     # below threshold
+    _reach_fails(conn, nid, now - 400, count=3, status="ok")
+    assert alerts.check_once(conn, cfg, now) == []
+
+
+def test_reach_alert_suppressed_during_ping_outage(conn, cfg, sent):
+    """A hard outage alerts via the outage path; reach must not double-report."""
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _internet_outage(conn, nid, now - 600, rounds=200)   # ~400 s outage
+    _reach_fails(conn, nid, now - 590, count=12)         # overlaps the outage
+
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1
+    assert "outage on" in subjects[0]                    # only the outage email
 
 
 def test_offline_alert_and_recovery(conn, cfg, sent):
