@@ -76,7 +76,10 @@ Configuration (`monitor.ini`): ping targets (`gateway=auto` = default-route
 detection), intervals (ping 2 s, reach 30 s, speed hourly, heartbeat 1/min),
 API port, token, local data retention (90 days). Data volume: the hourly
 speed test downloads ~1.2 GB/day; on a constrained link lower `speed_bytes`
-or increase `speed_interval`.
+or increase `speed_interval`. On fast lines a test finishing under
+`speed_min_seconds` (3 s) is automatically re-measured once with a larger
+payload (up to `speed_max_bytes`, 200 MB) so TCP ramp-up doesn't
+underestimate the result.
 
 ### Network connectivity (Tailscale)
 

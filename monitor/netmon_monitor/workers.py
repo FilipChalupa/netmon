@@ -80,11 +80,26 @@ def reach_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
         stop.wait(cfg.reach_interval)
 
 
+def measure_speed(cfg: Config, stop: threading.Event):
+    """One speed measurement, with an adaptive second pass on fast lines:
+    a test finishing under speed_min_seconds underestimates (TCP ramp-up),
+    so it is repeated once with a payload sized for ~2× that duration."""
+    mbps, bytes_, seconds, code = probes.speed_test(cfg.resolved_speed_url(), stop=stop)
+    if (mbps is not None and seconds is not None
+            and seconds < cfg.speed_min_seconds and not stop.is_set()):
+        size2 = probes.adaptive_speed_bytes(mbps, cfg.speed_min_seconds,
+                                            cfg.speed_max_bytes)
+        if size2 > cfg.speed_bytes:
+            m2, b2, s2, c2 = probes.speed_test(
+                cfg.speed_url.format(bytes=size2), stop=stop)
+            if m2 is not None:  # keep the first result if the retry failed
+                return m2, b2, s2, c2
+    return mbps, bytes_, seconds, code
+
+
 def speed_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
     while not stop.is_set():  # first test right at startup, then hourly
-        mbps, bytes_, seconds, code = probes.speed_test(
-            cfg.resolved_speed_url(), stop=stop
-        )
+        mbps, bytes_, seconds, code = measure_speed(cfg, stop)
         if not stop.is_set() or mbps is not None:
             db.insert_speed(time.time(), now_iso(), mbps, bytes_, seconds, code)
         stop.wait(cfg.speed_interval)

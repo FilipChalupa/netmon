@@ -104,6 +104,19 @@ def reach_probe(url: str, total_timeout: float = 10.0):
                 pass
 
 
+def adaptive_speed_bytes(measured_mbps: float, min_seconds: float,
+                         max_bytes: int) -> int:
+    """Payload size for the second, more accurate speed measurement.
+
+    Aims for a download lasting ~2× min_seconds at the measured speed so TCP
+    has time to ramp up; rounded to whole MB and capped at max_bytes.
+    """
+    target_seconds = min_seconds * 2
+    size = int(measured_mbps * 1_000_000 / 8 * target_seconds)
+    size = (size // 1_000_000) * 1_000_000
+    return min(size, max_bytes)
+
+
 def speed_test(url: str, max_time: float = 120.0, stop=None):
     """Download a test file and measure throughput.
 

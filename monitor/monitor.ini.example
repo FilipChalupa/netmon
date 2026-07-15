@@ -28,5 +28,9 @@ reach_url = https://www.google.com/generate_204
 speed_interval = 3600
 speed_bytes = 50000000
 speed_url = https://speed.cloudflare.com/__down?bytes={bytes}
+# Fast lines: a test finishing under speed_min_seconds is re-measured once
+# with a larger payload (sized for ~2× that duration, capped at speed_max_bytes).
+speed_min_seconds = 3
+speed_max_bytes = 200000000
 # Heartbeat into the uptime log (detects when measuring wasn't running).
 heartbeat_interval = 60

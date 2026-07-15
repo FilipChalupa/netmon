@@ -31,6 +31,10 @@ class Config:
     speed_interval: float = 3600.0
     speed_bytes: int = 50_000_000
     speed_url: str = "https://speed.cloudflare.com/__down?bytes={bytes}"
+    # a test finishing faster than this underestimates fast lines (TCP ramp-up)
+    # → re-measure once with a larger payload, capped at speed_max_bytes
+    speed_min_seconds: float = 3.0
+    speed_max_bytes: int = 200_000_000
     heartbeat_interval: float = 60.0
 
     def resolved_db_path(self) -> str:
@@ -81,5 +85,7 @@ def load_config(path: str) -> Config:
     cfg.speed_interval = float(p.get("speed_interval", cfg.speed_interval))
     cfg.speed_bytes = int(p.get("speed_bytes", cfg.speed_bytes))
     cfg.speed_url = p.get("speed_url", cfg.speed_url).strip()
+    cfg.speed_min_seconds = float(p.get("speed_min_seconds", cfg.speed_min_seconds))
+    cfg.speed_max_bytes = int(p.get("speed_max_bytes", cfg.speed_max_bytes))
     cfg.heartbeat_interval = float(p.get("heartbeat_interval", cfg.heartbeat_interval))
     return cfg
