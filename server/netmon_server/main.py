@@ -1,6 +1,6 @@
-"""FastAPI aplikace — vstupní bod evaluation serveru.
+"""FastAPI application — evaluation server entry point.
 
-Spuštění:  uvicorn netmon_server.main:app --host 0.0.0.0 --port 8000
+Run:  uvicorn netmon_server.main:app --host 0.0.0.0 --port 8000
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     cfg = load_config()
     app.state.cfg = cfg
     init_db(cfg.db_path)
-    log.info("netmon server v%s — DB %s, %d monitorů, sync každých %.0f s",
+    log.info("netmon server v%s — DB %s, %d monitors, sync every %.0f s",
              VERSION, cfg.db_path, len(cfg.monitors), cfg.sync_interval)
 
     stop = asyncio.Event()

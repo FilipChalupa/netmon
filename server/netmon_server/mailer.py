@@ -1,10 +1,10 @@
-"""Odesílání e-mailů přes smtplib. Stejné SMTP_* proměnné jako stará verze:
+"""Email sending via smtplib. Same SMTP_* variables as the old version:
 
-SMTP_HOST (povinné), SMTP_TO (povinné, čárkou oddělené), SMTP_PORT,
-SMTP_TLS = starttls (výchozí, 587) | ssl/smtps (465) | none (25),
-SMTP_USER / SMTP_PASS, SMTP_FROM (výchozí = SMTP_USER nebo netmon@localhost).
+SMTP_HOST (required), SMTP_TO (required, comma-separated), SMTP_PORT,
+SMTP_TLS = starttls (default, 587) | ssl/smtps (465) | none (25),
+SMTP_USER / SMTP_PASS, SMTP_FROM (default = SMTP_USER or netmon@localhost).
 
-SMTP_DRYRUN=1 → e-mail se neodešle, uloží se jako .eml (pro testování).
+SMTP_DRYRUN=1 → the email is not sent, it is saved as .eml (for testing).
 """
 
 from __future__ import annotations
@@ -24,11 +24,11 @@ def smtp_configured() -> bool:
 def send_email(subject: str, text_body: str,
                attachments: list[tuple[str, bytes, str, str]] | None = None,
                out_dir: str = ".") -> bool:
-    """attachments: (filename, data, maintype, subtype). Vrací True při odeslání/uložení."""
+    """attachments: (filename, data, maintype, subtype). Returns True when sent/saved."""
     host = os.environ.get("SMTP_HOST", "")
     to = os.environ.get("SMTP_TO", "")
     if not host or not to:
-        log.info("SMTP není nakonfigurováno (SMTP_HOST/SMTP_TO) — e-mail se neposílá.")
+        log.info("SMTP is not configured (SMTP_HOST/SMTP_TO) — not sending email.")
         return False
 
     tls = os.environ.get("SMTP_TLS", "starttls").lower()
@@ -51,7 +51,7 @@ def send_email(subject: str, text_body: str,
         path = os.path.join(out_dir, f"netmon-{subject.replace(' ', '_').replace('/', '-')}.eml")
         with open(path, "wb") as f:
             f.write(bytes(msg))
-        log.info("SMTP_DRYRUN: e-mail uložen do %s", path)
+        log.info("SMTP_DRYRUN: email saved to %s", path)
         return True
 
     if tls in ("ssl", "smtps"):
@@ -64,7 +64,7 @@ def send_email(subject: str, text_body: str,
         if user:
             server.login(user, password)
         server.send_message(msg)
-        log.info("E-mail odeslán na %s", ", ".join(recipients))
+        log.info("Email sent to %s", ", ".join(recipients))
         return True
     finally:
         server.quit()

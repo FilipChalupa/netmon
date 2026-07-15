@@ -1,14 +1,15 @@
-"""Odvození výpadků z latency dat — port algoritmu z legacy/events.sh.
+"""Outage derivation from latency data — port of the legacy/events.sh algorithm.
 
-Klasifikace kola pingů (všechny cíle sdílejí ts_epoch):
-  - local:    brána LOSS → problém na straně měřené sítě (kabel/switch/router)
-  - internet: brána OK, ale VŠECHNY veřejné cíle LOSS → problém u providera
-  - jinak:    v pořádku (ztráta jediného veřejného cíle = šum, žádná událost)
+Classification of a ping round (all targets share ts_epoch):
+  - local:    gateway LOSS → problem on the measured network's side
+              (cable/switch/router)
+  - internet: gateway OK but ALL public targets LOSS → provider problem
+  - otherwise: fine (a single public target lost = noise, no event)
 
-Po sobě jdoucí špatná kola se stejným scope se slučují do intervalu; změna
-scope interval rozdělí. Místo "sousední řádek v souboru" (bash) se souvislost
-pozná mezerou ≤ 2,5× ping_interval — správně tak rozdělí i výpadky přerušené
-dobou, kdy monitor neběžel.
+Consecutive bad rounds with the same scope merge into an interval; a scope
+change splits it. Instead of "adjacent line in the file" (bash), continuity
+is judged by a gap ≤ 2.5× ping_interval — which also correctly splits outages
+interrupted by periods when the monitor wasn't running.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ GATEWAY_TARGET = "gateway"
 PUBLIC_TARGETS = ("quad9", "google")
 
 NOTES = {
-    "local": "lokální linka (brána nedostupná)",
-    "internet": "internet (oba veřejné cíle nedostupné)",
+    "local": "local link (gateway unreachable)",
+    "internet": "internet (both public targets unreachable)",
 }
 
 
@@ -61,8 +62,8 @@ def derive_events(conn: sqlite3.Connection, network_id: int,
         (network_id, t0, t1),
     ).fetchall()
 
-    # seskupení LOSS řádků do kol podle ts_epoch (cíle kola sdílejí timestamp)
-    rounds: list[tuple[float, str, set]] = []  # (epoch, iso, {targets s LOSS})
+    # group LOSS rows into rounds by ts_epoch (a round's targets share the timestamp)
+    rounds: list[tuple[float, str, set]] = []  # (epoch, iso, {targets with LOSS})
     for r in rows:
         if rounds and rounds[-1][0] == r["ts_epoch"]:
             rounds[-1][2].add(r["target"])

@@ -1,4 +1,4 @@
-"""Konfigurace serveru: env proměnné + monitors.toml (seznam monitorů)."""
+"""Server configuration: environment variables + monitors.toml (monitor list)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 try:
     import tomllib
-except ImportError:  # Python 3.10 (lokální vývoj) — v Dockeru je 3.12
+except ImportError:  # Python 3.10 (local development) — Docker runs 3.12
     import tomli as tomllib
 
 
@@ -31,7 +31,7 @@ class ServerConfig:
     tz: str = "Europe/Prague"
     report_hour: int = 3
     sync_interval: float = 30.0
-    ping_interval: float = 2.0   # pro odvození výpadků; přepíše /api/info monitoru
+    ping_interval: float = 2.0   # for outage derivation; monitor's /api/info overrides
     monitors: list[MonitorCfg] = field(default_factory=list)
 
 

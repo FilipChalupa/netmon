@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}netmon — porovnání sítí{% endblock %}
+{% block title %}netmon — network comparison{% endblock %}
 {% block content %}
-<h1>Porovnání sítí</h1>
-<div class="sub">Překryté průběhy měřených sítí (latence a ztráty = průměr veřejných cílů).</div>
+<h1>Network comparison</h1>
+<div class="sub">Overlaid series of the measured networks (latency and loss = average of the public targets).</div>
 {% include "_range.html" %}
 <div class="range">
   {% for n in networks %}
@@ -12,9 +12,9 @@
        class="{% if n.name in selected %}active{% endif %}">{{ n.label }}</a>
   {% endfor %}
 </div>
-<div class="panel"><h2>Latence (ms)</h2><canvas id="cmpLat"></canvas></div>
-<div class="panel"><h2>Ztráta paketů (%)</h2><canvas id="cmpLoss"></canvas></div>
-<div class="panel"><h2>Rychlost stahování (Mbit/s)</h2><canvas id="cmpSpd"></canvas></div>
+<div class="panel"><h2>Latency (ms)</h2><canvas id="cmpLat"></canvas></div>
+<div class="panel"><h2>Packet loss (%)</h2><canvas id="cmpLoss"></canvas></div>
+<div class="panel"><h2>Download speed (Mbit/s)</h2><canvas id="cmpSpd"></canvas></div>
 {% endblock %}
 {% block scripts %}
 <script>

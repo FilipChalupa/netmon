@@ -1,12 +1,12 @@
-"""Jednorázový import historických CSV z bashové verze (log/RRRRMMDD/*.csv).
+"""One-off import of historical CSVs from the bash version (log/YYYYMMDD/*.csv).
 
-Použití:
-    python -m netmon_server.importer --network doma --label "Doma" /cesta/k/log
+Usage:
+    python -m netmon_server.importer --network home --label "Home" /path/to/log
 
-Idempotence na úrovni souborů: tabulka imports (network_id, path, sha256) —
-už naimportovaný soubor se přeskočí. --force smaže dřívější importované řádky
-daného dne (src_id IS NULL) a naimportuje znovu. Řádky ze syncu monitorů
-(src_id NOT NULL) se --force nedotkne.
+File-level idempotency: the imports table (network_id, path, sha256) — an
+already-imported file is skipped. --force deletes previously imported rows of
+the given day (src_id IS NULL) and re-imports. Rows synced from monitors
+(src_id NOT NULL) are never touched by --force.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def _int(s: str) -> int | None:
 
 
 def _code(s: str) -> int:
-    """http_code ze starých CSV: '200' → 200, 'FAIL'/'000'/'' → 0."""
+    """http_code from old CSVs: '200' → 200, 'FAIL'/'000'/'' → 0."""
     try:
         return int(s)
     except (TypeError, ValueError):
@@ -50,7 +50,7 @@ def _code(s: str) -> int:
 
 
 def parse_rows(kind: str, path: str, network_id: int):
-    """Generuje tuple pro insert_sql(kind); src_id = NULL."""
+    """Yields tuples for insert_sql(kind); src_id = NULL."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         header = next(reader, None)
@@ -61,7 +61,7 @@ def parse_rows(kind: str, path: str, network_id: int):
                 continue
             ts_iso = row[0]
             if kind == "latency":
-                # timestamp,target,ip,status,rtt_ms; sentinel STOPPED řádky pryč
+                # timestamp,target,ip,status,rtt_ms; drop sentinel STOPPED rows
                 if len(row) < 5 or row[1] == "--":
                     continue
                 yield (network_id, None, _epoch(ts_iso), ts_iso,
@@ -95,7 +95,7 @@ def _sha256(path: str) -> str:
 
 def import_file(conn: sqlite3.Connection, network_id: int, kind: str,
                 path: str, day: str, force: bool) -> int | None:
-    """Vrací počet vložených řádků, None = přeskočeno (už naimportováno)."""
+    """Returns the number of inserted rows, None = skipped (already imported)."""
     key = os.path.abspath(path)
     digest = _sha256(path)
     existing = conn.execute(
@@ -107,7 +107,7 @@ def import_file(conn: sqlite3.Connection, network_id: int, kind: str,
     day_prefix = f"{day[0:4]}-{day[4:6]}-{day[6:8]}"
     with conn:
         if existing or force:
-            # znovu-import: pryč s dříve importovanými řádky daného dne
+            # re-import: remove previously imported rows of that day first
             conn.execute(
                 f"DELETE FROM {kind} WHERE network_id=? AND src_id IS NULL "
                 f"AND substr(ts_iso,1,10)=?", (network_id, day_prefix))
@@ -142,20 +142,20 @@ def import_tree(conn: sqlite3.Connection, network_id: int, log_root: str,
                 stats["rows"] += n
                 day_rows += n
         stats["days"] += 1
-        print(f"  {day}: +{day_rows} řádků")
+        print(f"  {day}: +{day_rows} rows")
     return stats
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Import historických netmon CSV")
-    ap.add_argument("log_root", help="adresář log/ se složkami RRRRMMDD")
-    ap.add_argument("--network", required=True, help="jméno sítě (tag v databázi)")
-    ap.add_argument("--label", help="lidský popisek sítě (výchozí = jméno)")
-    ap.add_argument("--force", action="store_true", help="přepsat už naimportované soubory")
+    ap = argparse.ArgumentParser(description="Import historical netmon CSVs")
+    ap.add_argument("log_root", help="log/ directory containing YYYYMMDD subdirectories")
+    ap.add_argument("--network", required=True, help="network name (tag in the database)")
+    ap.add_argument("--label", help="human-readable network label (default = name)")
+    ap.add_argument("--force", action="store_true", help="overwrite already imported files")
     args = ap.parse_args()
 
     if not os.path.isdir(args.log_root):
-        print(f"Adresář nenalezen: {args.log_root}", file=sys.stderr)
+        print(f"Directory not found: {args.log_root}", file=sys.stderr)
         return 1
 
     cfg = load_config()
@@ -163,10 +163,10 @@ def main() -> int:
     conn = connect(cfg.db_path)
     try:
         network_id = get_or_create_network(conn, args.network, args.label)
-        print(f"Import do sítě '{args.network}' (DB {cfg.db_path}) z {args.log_root}:")
+        print(f"Importing into network '{args.network}' (DB {cfg.db_path}) from {args.log_root}:")
         stats = import_tree(conn, network_id, args.log_root, args.force)
-        print(f"Hotovo: {stats['days']} dnů, {stats['files']} souborů, "
-              f"{stats['rows']} řádků (+{stats['skipped']} přeskočeno).")
+        print(f"Done: {stats['days']} days, {stats['files']} files, "
+              f"{stats['rows']} rows (+{stats['skipped']} skipped).")
     finally:
         conn.close()
     return 0

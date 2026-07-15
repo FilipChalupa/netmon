@@ -1,8 +1,8 @@
-"""Souhrny a časové řady pro karty a grafy.
+"""Summaries and time series for cards and charts.
 
-Bucketování v SQL: bucket = CAST(ts_epoch/b AS INT)*b, kde b je násobek 60 s
-zvolený tak, aby řada měla ≤ ~1500 bodů (den = minutové buckety jako ve staré
-verzi, delší rozsahy se samy zředí).
+Bucketing in SQL: bucket = CAST(ts_epoch/b AS INT)*b where b is a multiple
+of 60 s chosen so a series has ≤ ~1500 points (a day = per-minute buckets
+like the old version; longer ranges thin themselves out).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import sqlite3
 
 from .events import derive_events, events_summary
 
-UPTIME_GAP_THRESHOLD = 150  # s; mezera mezi tepy delší než tohle = měření neběželo
+UPTIME_GAP_THRESHOLD = 150  # s; a heartbeat gap longer than this = measuring wasn't running
 MAX_POINTS = 1500
 
 
@@ -23,7 +23,7 @@ def pick_bucket(t0: float, t1: float) -> int:
 
 def latency_series(conn: sqlite3.Connection, network_id: int,
                    t0: float, t1: float, bucket: int) -> dict:
-    """Latence (avg) a ztráty (%) per cíl per bucket. AVG ignoruje NULL rtt LOSS řádků."""
+    """Latency (avg) and loss (%) per target per bucket. AVG ignores the NULL rtt of LOSS rows."""
     rows = conn.execute(
         "SELECT CAST(ts_epoch/:b AS INT)*:b AS bucket, target, "
         "       AVG(rtt_ms) AS rtt, 100.0*SUM(status='LOSS')/COUNT(*) AS loss "
@@ -74,7 +74,7 @@ def reach_series(conn: sqlite3.Connection, network_id: int,
 
 def speed_points(conn: sqlite3.Connection, network_id: int,
                  t0: float, t1: float) -> dict:
-    """Rychlost — vždy surové body (1×/h, bucketovat netřeba)."""
+    """Speed — always raw points (hourly, no bucketing needed)."""
     rows = conn.execute(
         "SELECT ts_epoch, down_mbps FROM speed "
         "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? AND down_mbps IS NOT NULL "
@@ -95,8 +95,8 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
 
 def uptime_panel(conn: sqlite3.Connection, network_id: int,
                  t0: float, t1: float) -> dict:
-    """Pokrytí měření z tepů: mezera >150 s = neběželo; STOP před mezerou
-    = řízené zastavení, jinak pád/vypnutý počítač."""
+    """Measurement coverage from heartbeats: gap >150 s = not running; STOP
+    before the gap = controlled shutdown, otherwise crash/powered-off host."""
     rows = conn.execute(
         "SELECT ts_epoch, ts_iso, event FROM uptime "
         "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
@@ -130,7 +130,7 @@ def uptime_panel(conn: sqlite3.Connection, network_id: int,
 
 def summary(conn: sqlite3.Connection, network_id: int,
             t0: float, t1: float, ping_interval: float = 2.0) -> dict:
-    """Souhrn pro karty: per cíl vzorky/ztráta/latence, rychlost, pokrytí, výpadky."""
+    """Summary for cards: per-target samples/loss/latency, speed, coverage, outages."""
     target_rows = conn.execute(
         "SELECT target, COUNT(*) AS samples, "
         "       100.0*SUM(status='LOSS')/COUNT(*) AS loss, "

@@ -1,7 +1,7 @@
 <div class="range">
-  <a href="?range=day&date={{ date }}" class="{% if range == 'day' %}active{% endif %}">Den</a>
-  <a href="?range=week&date={{ date }}" class="{% if range == 'week' %}active{% endif %}">Týden</a>
-  <a href="?range=all" class="{% if range == 'all' %}active{% endif %}">Vše</a>
+  <a href="?range=day&date={{ date }}" class="{% if range == 'day' %}active{% endif %}">Day</a>
+  <a href="?range=week&date={{ date }}" class="{% if range == 'week' %}active{% endif %}">Week</a>
+  <a href="?range=all" class="{% if range == 'all' %}active{% endif %}">All</a>
   {% if range != 'all' %}
     <a href="?range={{ range }}&date={{ prev_date }}">‹</a>
     {% if not is_today %}<a href="?range={{ range }}&date={{ next_date }}">›</a>{% endif %}

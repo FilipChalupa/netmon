@@ -1,9 +1,9 @@
-"""SQLite schéma a pomocníci evaluation serveru.
+"""SQLite schema and helpers of the evaluation server.
 
-Idempotentní sync: řádky z monitorů nesou src_id (id z monitoru) a
-UNIQUE(network_id, src_id) + INSERT OR IGNORE zaručí, že se nic nezdvojí.
-Importované CSV řádky mají src_id NULL (UNIQUE v SQLite NULLy ignoruje —
-dedup importů se řeší na úrovni souborů v tabulce imports).
+Idempotent sync: rows pulled from monitors carry src_id (the monitor's row
+id) and UNIQUE(network_id, src_id) + INSERT OR IGNORE guarantees nothing is
+ever duplicated. Imported CSV rows have src_id NULL (SQLite UNIQUE ignores
+NULLs — import dedup happens at file level in the imports table).
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS meta(
 
 KINDS = ("latency", "reach", "speed", "uptime")
 
-# sloupce vkládané při syncu/importu (bez id), v pořadí INSERTu
+# columns inserted during sync/import (without id), in INSERT order
 KIND_INSERT_COLUMNS = {
     "latency": ["network_id", "src_id", "ts_epoch", "ts_iso", "target", "ip", "status", "rtt_ms"],
     "reach": ["network_id", "src_id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],

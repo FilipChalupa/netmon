@@ -1,4 +1,4 @@
-"""HTML stránky (Jinja2): dashboard, detail sítě, porovnání."""
+"""HTML pages (Jinja2): dashboard, network detail, comparison."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def network_detail(request: Request, name: str, range: str = "day", date: str | 
     try:
         net = get_network(conn, name)
         if not net:
-            raise HTTPException(404, f"Neznámá síť: {name}")
+            raise HTTPException(404, f"Unknown network: {name}")
         nets = _networks(conn)
     finally:
         conn.close()

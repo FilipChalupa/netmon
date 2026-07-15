@@ -1,5 +1,5 @@
-/* netmon frontend — dashboard, detail sítě, porovnání.
-   Vzhled a prahy převzaty z původního report-html.sh. */
+/* netmon frontend — dashboard, network detail, comparison.
+   Look and thresholds carried over from the original report-html.sh. */
 
 const TARGET_COLORS = {gateway:'#38bdf8', quad9:'#a78bfa', google:'#f472b6',
                        _0:'#34d399', _1:'#fbbf24', _2:'#fb7185'};
@@ -12,13 +12,13 @@ const colorForNet = i => NET_COLORS[i % NET_COLORS.length];
 const fmtDur = s => s >= 3600 ? (s / 3600).toFixed(1) + ' h'
                   : s >= 60 ? (s / 60).toFixed(1) + ' min' : s + ' s';
 const lossCls = l => l > 1 ? 'bad' : l > 0.1 ? 'warn' : 'ok';
-const lossLbl = l => l > 1 ? 'problém' : l > 0.1 ? 'drobné ztráty' : 'OK';
+const lossLbl = l => l > 1 ? 'problem' : l > 0.1 ? 'minor loss' : 'OK';
 
 function fmtTs(epoch, longRange) {
   const d = new Date(epoch * 1000);
-  const hm = d.toLocaleTimeString('cs-CZ', {hour: '2-digit', minute: '2-digit'});
+  const hm = d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
   if (!longRange) return hm;
-  return d.toLocaleDateString('cs-CZ', {day: 'numeric', month: 'numeric'}) + ' ' + hm;
+  return d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short'}) + ' ' + hm;
 }
 const fmtIso = iso => (iso || '').replace('T', ' ').slice(0, 19);
 
@@ -44,7 +44,7 @@ function lineChart(id, labels, datasets, yLabel) {
   if (el) new Chart(el, {type: 'line', data: {labels, datasets}, options: baseOpts(yLabel)});
 }
 
-/* ---------- karty a panely detailu sítě (dle report-html.sh) ---------- */
+/* ---------- cards and panels of the network detail (per report-html.sh) ---------- */
 
 function renderCards(sum) {
   const el = document.getElementById('cards');
@@ -53,19 +53,19 @@ function renderCards(sum) {
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
         <h3>${s.target}</h3>
-        <div class="metric"><span>Ztráta paketů</span><span class="pill ${lossCls(s.loss)}">${s.loss.toFixed(2)}% · ${lossLbl(s.loss)}</span></div>
-        <div class="metric"><span>Latence avg</span><span class="v">${s.avg == null ? '—' : s.avg.toFixed(1) + ' ms'}</span></div>
-        <div class="metric"><span>Latence min / max</span><span class="v">${s.min == null ? '—' : s.min.toFixed(1) + ' / ' + s.max.toFixed(1) + ' ms'}</span></div>
-        <div class="metric"><span>Vzorků</span><span class="v">${s.samples.toLocaleString('cs')}</span></div>
+        <div class="metric"><span>Packet loss</span><span class="pill ${lossCls(s.loss)}">${s.loss.toFixed(2)}% · ${lossLbl(s.loss)}</span></div>
+        <div class="metric"><span>Latency avg</span><span class="v">${s.avg == null ? '—' : s.avg.toFixed(1) + ' ms'}</span></div>
+        <div class="metric"><span>Latency min / max</span><span class="v">${s.min == null ? '—' : s.min.toFixed(1) + ' / ' + s.max.toFixed(1) + ' ms'}</span></div>
+        <div class="metric"><span>Samples</span><span class="v">${s.samples.toLocaleString('en')}</span></div>
       </div>`);
   });
   if (sum.speed.n) {
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
-        <h3>rychlost ⬇</h3>
+        <h3>speed ⬇</h3>
         <div class="big">${sum.speed.avg.toFixed(0)} <span style="font-size:14px;color:var(--mut)">Mbit/s avg</span></div>
         <div class="metric"><span>min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>
-        <div class="metric"><span>měření</span><span class="v">${sum.speed.n}</span></div>
+        <div class="metric"><span>tests</span><span class="v">${sum.speed.n}</span></div>
       </div>`);
   }
   const u = sum.uptime;
@@ -73,11 +73,11 @@ function renderCards(sum) {
     const covCls = u.coverage >= 99 ? 'ok' : u.coverage >= 90 ? 'warn' : 'bad';
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
-        <h3>běh měření</h3>
-        <div class="big">${u.coverage.toFixed(1)}<span style="font-size:14px;color:var(--mut)"> % pokrytí</span></div>
-        <div class="metric"><span>Doba běhu</span><span class="v">${fmtDur(u.span_s - u.down_s)}</span></div>
-        <div class="metric"><span>Mimo provoz</span><span class="pill ${covCls}">${fmtDur(u.down_s)}</span></div>
-        <div class="metric"><span>Přerušení</span><span class="v">${u.gaps.length}×</span></div>
+        <h3>measurement uptime</h3>
+        <div class="big">${u.coverage.toFixed(1)}<span style="font-size:14px;color:var(--mut)"> % coverage</span></div>
+        <div class="metric"><span>Running time</span><span class="v">${fmtDur(u.span_s - u.down_s)}</span></div>
+        <div class="metric"><span>Downtime</span><span class="pill ${covCls}">${fmtDur(u.down_s)}</span></div>
+        <div class="metric"><span>Interruptions</span><span class="v">${u.gaps.length}×</span></div>
       </div>`);
   }
 }
@@ -85,54 +85,54 @@ function renderCards(sum) {
 function renderUptime(u) {
   const el = document.getElementById('uptime');
   if (u.coverage == null) {
-    el.innerHTML = '<p class="empty" style="margin:0">V tomto období žádný záznam o běhu měření.</p>';
+    el.innerHTML = '<p class="empty" style="margin:0">No measurement uptime records in this period.</p>';
     return;
   }
   const covCls = u.coverage >= 99 ? 'ok' : u.coverage >= 90 ? 'warn' : 'bad';
   const crash = u.gaps.filter(g => g.cause === 'crash').length;
   const stopped = u.gaps.filter(g => g.cause === 'stopped').length;
   let head = '<div style="margin-bottom:10px">';
-  head += `<span class="pill ${covCls}">pokrytí ${u.coverage.toFixed(1)}% · mimo provoz ${fmtDur(u.down_s)}</span> `;
-  if (crash) head += `<span class="pill bad">neočekávaná přerušení: ${crash}×</span> `;
-  if (stopped) head += `<span class="pill warn">řízená zastavení: ${stopped}×</span>`;
+  head += `<span class="pill ${covCls}">coverage ${u.coverage.toFixed(1)}% · downtime ${fmtDur(u.down_s)}</span> `;
+  if (crash) head += `<span class="pill bad">unexpected interruptions: ${crash}×</span> `;
+  if (stopped) head += `<span class="pill warn">controlled stops: ${stopped}×</span>`;
   head += '</div>';
   if (!u.gaps.length) {
-    el.innerHTML = head + '<p style="color:var(--ok);margin:0">Měření běželo bez přerušení. 🎉</p>';
+    el.innerHTML = head + '<p style="color:var(--ok);margin:0">Measuring ran without interruption. 🎉</p>';
     return;
   }
   const rows = u.gaps.slice().sort((a, b) => b.dur - a.dur).map(g => {
     const isCrash = g.cause === 'crash';
     return `<tr><td>${fmtIso(g.from)}</td><td>${fmtIso(g.to)}</td>` +
            `<td style="text-align:right">${fmtDur(g.dur)}</td>` +
-           `<td><span class="pill ${isCrash ? 'bad' : 'warn'}">${isCrash ? 'pád / vypnutý počítač' : 'skript zastaven'}</span></td></tr>`;
+           `<td><span class="pill ${isCrash ? 'bad' : 'warn'}">${isCrash ? 'crash / powered-off host' : 'script stopped'}</span></td></tr>`;
   }).join('');
-  el.innerHTML = head + `<table class="evt"><thead><tr><th>od</th><th>do (znovu naběhlo)</th>` +
-    `<th style="text-align:right">trvání</th><th>příčina</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = head + `<table class="evt"><thead><tr><th>from</th><th>to (came back up)</th>` +
+    `<th style="text-align:right">duration</th><th>cause</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderEvents(events) {
   const el = document.getElementById('events');
   if (!events.length) {
-    el.innerHTML = '<p style="color:var(--ok);margin:0">Žádné výpadky během měření. 🎉</p>';
+    el.innerHTML = '<p style="color:var(--ok);margin:0">No outages during the measurement. 🎉</p>';
     return;
   }
   const tot = {};
   events.forEach(e => tot[e.scope] = (tot[e.scope] || 0) + e.dur);
   let head = '<div style="margin-bottom:10px">';
-  if (tot.local) head += `<span class="pill bad">lokál: ${events.filter(e => e.scope === 'local').length}× · ${fmtDur(tot.local)}</span> `;
+  if (tot.local) head += `<span class="pill bad">local: ${events.filter(e => e.scope === 'local').length}× · ${fmtDur(tot.local)}</span> `;
   if (tot.internet) head += `<span class="pill warn">internet: ${events.filter(e => e.scope === 'internet').length}× · ${fmtDur(tot.internet)}</span>`;
   head += '</div>';
   const rows = events.slice().sort((a, b) => b.dur - a.dur).map(e => {
     const local = e.scope === 'local';
     return `<tr><td>${fmtIso(e.start)}</td><td>${fmtIso(e.end).slice(11)}</td>` +
            `<td style="text-align:right">${fmtDur(e.dur)}</td>` +
-           `<td><span class="pill ${local ? 'bad' : 'warn'}">${local ? 'lokální linka' : 'internet / ISP'}</span></td></tr>`;
+           `<td><span class="pill ${local ? 'bad' : 'warn'}">${local ? 'local link' : 'internet / ISP'}</span></td></tr>`;
   }).join('');
-  el.innerHTML = head + `<table class="evt"><thead><tr><th>začátek</th><th>konec</th>` +
-    `<th style="text-align:right">trvání</th><th>rozsah</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = head + `<table class="evt"><thead><tr><th>start</th><th>end</th>` +
+    `<th style="text-align:right">duration</th><th>scope</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-/* ---------- stránky ---------- */
+/* ---------- pages ---------- */
 
 async function pageNetwork() {
   const {name, t0, t1} = window.PAGE;
@@ -144,7 +144,7 @@ async function pageNetwork() {
   ]);
   if (sum.period.first) {
     document.getElementById('period').textContent =
-      'Měřeno: ' + fmtIso(sum.period.first) + '  →  ' + fmtIso(sum.period.last);
+      'Measured: ' + fmtIso(sum.period.first) + '  →  ' + fmtIso(sum.period.last);
   }
   renderCards(sum);
   renderUptime(sum.uptime);
@@ -160,7 +160,7 @@ async function pageNetwork() {
   lineChart('lossChart', labels, targetNames.map((t, i) => ({
     label: t, data: lat.targets[t].loss, borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25, fill: false,
-  })), '% ztrát');
+  })), '% loss');
 
   const rch = series.reach;
   lineChart('rchChart', rch.buckets.map(b => fmtTs(b, longRange)), [
@@ -181,8 +181,8 @@ async function pageDashboard() {
   const nets = await getJSON('/api/networks');
   const el = document.getElementById('netcards');
   if (!nets.length) {
-    el.innerHTML = '<p class="empty">Zatím žádné sítě — přidej monitory do monitors.toml ' +
-                   'nebo naimportuj historická data.</p>';
+    el.innerHTML = '<p class="empty">No networks yet — add monitors to monitors.toml ' +
+                   'or import historical data.</p>';
     return;
   }
   el.innerHTML = '';
@@ -195,29 +195,29 @@ async function pageDashboard() {
                 s.targets.find(t => PUBLIC_TARGETS.includes(t.target));
     let statePill;
     if (!s.targets.length) {
-      statePill = '<span class="pill mutpill">dnes bez dat</span>';
+      statePill = '<span class="pill mutpill">no data today</span>';
     } else if (n.sync.configured && !n.sync.online) {
-      statePill = '<span class="pill mutpill">monitor nedostupný</span>';
+      statePill = '<span class="pill mutpill">monitor unreachable</span>';
     } else if ((gw && gw.loss > 1) || worstLoss > 1 || s.events.length) {
-      statePill = '<span class="pill bad">výpadky</span>';
+      statePill = '<span class="pill bad">outages</span>';
     } else if (worstLoss > 0.1) {
-      statePill = '<span class="pill warn">drobné ztráty</span>';
+      statePill = '<span class="pill warn">minor loss</span>';
     } else {
       statePill = '<span class="pill ok">OK</span>';
     }
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
         <h3><a href="/net/${n.name}">${n.label}</a> ${statePill}</h3>
-        <div class="metric"><span>Ztráta (internet)</span><span class="pill ${lossCls(worstLoss)}">${worstLoss.toFixed(2)}%</span></div>
-        <div class="metric"><span>Latence avg</span><span class="v">${pub && pub.avg != null ? pub.avg.toFixed(1) + ' ms' : '—'}</span></div>
-        <div class="metric"><span>Poslední rychlost</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' Mbit/s' : '—'}</span></div>
-        <div class="metric"><span>Pokrytí dnes</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
-        <div class="metric"><span>Výpadky dnes</span><span class="v">${s.events.length}×</span></div>
+        <div class="metric"><span>Loss (internet)</span><span class="pill ${lossCls(worstLoss)}">${worstLoss.toFixed(2)}%</span></div>
+        <div class="metric"><span>Latency avg</span><span class="v">${pub && pub.avg != null ? pub.avg.toFixed(1) + ' ms' : '—'}</span></div>
+        <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' Mbit/s' : '—'}</span></div>
+        <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
+        <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
       </div>`);
   });
 }
 
-/* Porovnání: latence a ztráty = průměr veřejných cílů per síť, na sjednocené ose. */
+/* Comparison: latency and loss = average of public targets per network, on a unified axis. */
 async function pageCompare() {
   const {nets, t0, t1} = window.PAGE;
   const longRange = t1 - t0 > 86400 * 1.5;
@@ -249,9 +249,9 @@ async function pageCompare() {
   })).filter(Boolean);
 
   lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms');
-  lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% ztrát');
+  lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss');
 
-  // rychlost: sjednocená osa ze surových bodů
+  // speed: unified axis from raw points
   const spdTs = new Set();
   series.forEach(s => s && s.speed.ts.forEach(t => spdTs.add(t)));
   const spdAxis = [...spdTs].sort((a, b) => a - b);
@@ -271,6 +271,6 @@ function netmonInit() {
   fn().catch(err => {
     console.error(err);
     document.body.insertAdjacentHTML('beforeend',
-      `<div class="panel" style="border-color:var(--bad)">Chyba načítání dat: ${err.message}</div>`);
+      `<div class="panel" style="border-color:var(--bad)">Failed to load data: ${err.message}</div>`);
   });
 }

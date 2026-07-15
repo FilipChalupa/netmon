@@ -1,4 +1,4 @@
-"""JSON API pro frontend (grafy) a health check."""
+"""JSON API for the frontend (charts) and health check."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from ..timerange import resolve_range
 
 router = APIRouter(prefix="/api")
 
-# monitor považujeme za nedostupný, když se sync nepovedl déle než tolik sekund
+# a monitor counts as unreachable when sync hasn't succeeded for this many seconds
 OFFLINE_AFTER = 180.0
 
 
@@ -25,7 +25,7 @@ def _open(request: Request):
 def _net_id(conn, name: str) -> int:
     net = get_network(conn, name)
     if not net:
-        raise HTTPException(404, f"Neznámá síť: {name}")
+        raise HTTPException(404, f"Unknown network: {name}")
     return net["id"]
 
 
@@ -36,7 +36,7 @@ def health():
 
 @router.get("/networks")
 def networks(request: Request):
-    """Sítě + stav syncu + dnešní minisouhrn pro dashboard karty."""
+    """Networks + sync state + today's mini-summary for dashboard cards."""
     cfg = request.app.state.cfg
     conn = _open(request)
     try:

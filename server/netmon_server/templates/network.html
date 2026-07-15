@@ -2,15 +2,15 @@
 {% block title %}netmon — {{ net.label }}{% endblock %}
 {% block content %}
 <h1>{{ net.label }}</h1>
-<div class="sub" id="period">Kvalita připojení v síti „{{ net.label }}“</div>
+<div class="sub" id="period">Connection quality on the “{{ net.label }}” network</div>
 {% include "_range.html" %}
 <div class="cards" id="cards"></div>
-<div class="panel"><h2>⏱️ Běh měření</h2><div id="uptime"><p class="empty">Načítám…</p></div></div>
-<div class="panel"><h2>🛑 Výpadky</h2><div id="events"><p class="empty">Načítám…</p></div></div>
-<div class="panel"><h2>Latence v čase (ms)</h2><canvas id="latChart"></canvas></div>
-<div class="panel"><h2>Ztráta paketů (%)</h2><canvas id="lossChart"></canvas></div>
-<div class="panel"><h2>Dosažitelnost služeb — DNS / TCP / TLS (ms)</h2><canvas id="rchChart"></canvas></div>
-<div class="panel"><h2>Rychlost stahování (Mbit/s)</h2><canvas id="spdChart"></canvas></div>
+<div class="panel"><h2>⏱️ Measurement uptime</h2><div id="uptime"><p class="empty">Loading…</p></div></div>
+<div class="panel"><h2>🛑 Outages</h2><div id="events"><p class="empty">Loading…</p></div></div>
+<div class="panel"><h2>Latency over time (ms)</h2><canvas id="latChart"></canvas></div>
+<div class="panel"><h2>Packet loss (%)</h2><canvas id="lossChart"></canvas></div>
+<div class="panel"><h2>Service reachability — DNS / TCP / TLS (ms)</h2><canvas id="rchChart"></canvas></div>
+<div class="panel"><h2>Download speed (Mbit/s)</h2><canvas id="spdChart"></canvas></div>
 {% endblock %}
 {% block scripts %}
 <script>

@@ -1,8 +1,8 @@
-"""Sync worker — průběžné stahování dat z monitorů (pull přes Tailscale).
+"""Sync worker — continuous pulling of data from monitors (over Tailscale).
 
-Stránkuje /api/data/{kind}?after_id=N; každá stránka se uloží v jedné
-transakci spolu s posunem kurzoru (crash-safe). Duplicitám brání
-UNIQUE(network_id, src_id) + INSERT OR IGNORE.
+Paginates /api/data/{kind}?after_id=N; each page is stored in a single
+transaction together with the cursor advance (crash-safe). Duplicates are
+prevented by UNIQUE(network_id, src_id) + INSERT OR IGNORE.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ log = logging.getLogger("netmon.sync")
 
 PAGE_LIMIT = 5000
 
-# mapování JSON řádku z monitoru → pořadí sloupců pro insert_sql(kind)
+# mapping of a monitor JSON row → column order for insert_sql(kind)
 ROW_FIELDS = {
     "latency": ("target", "ip", "status", "rtt_ms"),
     "reach": ("dns_ms", "tcp_ms", "tls_ms", "http_code", "status"),
@@ -41,7 +41,7 @@ def _store_page(conn: sqlite3.Connection, kind: str, network_id: int,
               + [r.get(f) for f in ROW_FIELDS[kind]])
         for r in rows
     ]
-    with conn:  # jedna transakce: data + kurzor
+    with conn:  # single transaction: data + cursor
         cur = conn.executemany(insert_sql(kind), params)
         inserted = cur.rowcount
         conn.execute(
@@ -55,7 +55,7 @@ def _store_page(conn: sqlite3.Connection, kind: str, network_id: int,
 
 async def pull_monitor(conn: sqlite3.Connection, client: httpx.AsyncClient,
                        mon: MonitorCfg) -> int:
-    """Stáhne všechna nová data z jednoho monitoru. Vrací počet nových řádků."""
+    """Pull all new data from one monitor. Returns the number of new rows."""
     network_id = get_or_create_network(conn, mon.name, mon.label)
     total = 0
     for kind in KINDS:
@@ -114,10 +114,10 @@ async def sync_once(conn: sqlite3.Connection, client: httpx.AsyncClient,
             n = await pull_monitor(conn, client, mon)
             _mark_status(conn, network_id, None)
             if n:
-                log.info("sync %s: +%d řádků", mon.name, n)
-        except Exception as e:  # nedostupný monitor nesmí shodit smyčku
+                log.info("sync %s: +%d rows", mon.name, n)
+        except Exception as e:  # an unreachable monitor must not kill the loop
             _mark_status(conn, network_id, f"{type(e).__name__}: {e}")
-            log.warning("sync %s selhal: %s", mon.name, e)
+            log.warning("sync %s failed: %s", mon.name, e)
 
 
 async def sync_forever(cfg: ServerConfig, stop: asyncio.Event) -> None:

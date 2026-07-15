@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="cs">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -46,12 +46,12 @@
 <body>
 <nav>
   <a class="brand" href="/">📡 netmon</a>
-  <a class="item {% if request.url.path == '/' %}active{% endif %}" href="/">Přehled</a>
+  <a class="item {% if request.url.path == '/' %}active{% endif %}" href="/">Overview</a>
   {% for n in networks | default([]) %}
     <a class="item {% if request.url.path == '/net/' + n.name %}active{% endif %}"
        href="/net/{{ n.name }}">{{ n.label }}</a>
   {% endfor %}
-  <a class="item {% if request.url.path == '/compare' %}active{% endif %}" href="/compare">Porovnání</a>
+  <a class="item {% if request.url.path == '/compare' %}active{% endif %}" href="/compare">Compare</a>
 </nav>
 {% block content %}{% endblock %}
 <div class="foot">netmon 2 · evaluation server</div>
