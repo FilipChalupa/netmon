@@ -1,0 +1,32 @@
+# netmon monitor — konfigurace agenta
+# Zkopíruj do ~/.config/netmon/monitor.ini a uprav.
+
+[monitor]
+# Jméno sítě — musí odpovídat záznamu v monitors.toml na evaluation serveru.
+network = doma
+# Port mini HTTP API (evaluation server ho čte přes Tailscale).
+port = 8787
+# Na čem poslouchat. 0.0.0.0 = všude; můžeš zúžit na Tailscale IP (100.x.y.z).
+bind = 0.0.0.0
+# Sdílený token (hlavička X-Netmon-Token). Prázdné = bez kontroly.
+token =
+# Kam ukládat lokální SQLite databázi měření.
+db_path = ~/.local/share/netmon/monitor.db
+# Jak dlouho držet lokální data (evaluation server si je průběžně stahuje).
+retention_days = 90
+
+[probes]
+# Sekund mezi koly pingů / čekání na odpověď.
+ping_interval = 2
+ping_timeout = 2
+# Cíle pingu: jméno=IP, brána = auto (detekce z výchozí trasy).
+targets = gateway=auto, quad9=9.9.9.9, google=8.8.8.8
+# Reach sonda (DNS/TCP/TLS) — interval a cíl.
+reach_interval = 30
+reach_url = https://www.google.com/generate_204
+# Test rychlosti — interval (3600 = 1×/h), objem (50 MB ≈ 1,2 GB/den).
+speed_interval = 3600
+speed_bytes = 50000000
+speed_url = https://speed.cloudflare.com/__down?bytes={bytes}
+# Tep do uptime záznamů (detekce, kdy měření neběželo).
+heartbeat_interval = 60

@@ -1,0 +1,18 @@
+services:
+  netmon:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - netmon-data:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NETMON_DB: /data/netmon.db
+      NETMON_MONITORS: /data/monitors.toml
+      NETMON_TZ: Europe/Prague
+    restart: unless-stopped
+
+volumes:
+  netmon-data:

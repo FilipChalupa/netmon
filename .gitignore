@@ -1,22 +1,29 @@
-# logy měření (log/RRRRMMDD/*.csv) — generují se za běhu
-log/
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
 
-# staré ploché CSV v kořeni — nahrazeno log/RRRRMMDD/
+# lokální data evaluation serveru (SQLite + monitors.toml s tokeny)
+server/data/
+server/config/monitors.toml
+
+# lokální SQLite monitoru (při ručním spuštění mimo ~/.local/share)
+*.db
+*.db-wal
+*.db-shm
+
+# lokální konfigurace e-mailu (SMTP přihlášení) — necommituj!
+/.env
+server/.env
+
+# --- pozůstatky bashové verze (data na měřicích strojích) ---
+log/
+/archiv/
+/report.html
+/netmon.run.log
+/netmon.pid
 /latency.csv
 /speed.csv
 /reach.csv
 /uptime.csv
 /events.csv
-
-# zálohy logů (generuje reset.sh)
-/archiv/
-
-# generovaný HTML report
-/report.html
-
-# runtime soubory procesu
-/netmon.run.log
-/netmon.pid
-
-# lokální konfigurace e-mailu (SMTP přihlášení) — necommituj!
-/.env

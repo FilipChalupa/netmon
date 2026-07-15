@@ -1,0 +1,16 @@
+[Unit]
+Description=netmon monitor — měření kvality připojení
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m netmon_monitor --config %h/.config/netmon/monitor.ini
+WorkingDirectory=%h/netmon/monitor
+Environment=PYTHONPATH=%h/netmon/monitor
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

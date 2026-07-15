@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}netmon{% endblock %}</title>
+<script src="/static/chart.umd.js"></script>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--mut:#94a3b8;--fg:#e2e8f0;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--accent:#38bdf8}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;padding:24px}
+  h1{margin:0 0 4px;font-size:24px}
+  a{color:var(--accent);text-decoration:none}
+  .sub{color:var(--mut);margin-bottom:24px;font-size:13px}
+  nav{display:flex;gap:14px;align-items:center;margin-bottom:22px;flex-wrap:wrap}
+  nav .brand{font-weight:700;font-size:18px;color:var(--fg)}
+  nav a.item{color:var(--mut);padding:4px 10px;border-radius:8px}
+  nav a.item:hover{color:var(--fg)}
+  nav a.item.active{background:var(--card);color:var(--fg)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:28px}
+  .card{background:var(--card);border-radius:12px;padding:16px 18px;border:1px solid #334155}
+  .card h3{margin:0 0 10px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+  .card h3 a{color:inherit}
+  .metric{display:flex;justify-content:space-between;margin:4px 0;font-size:14px}
+  .metric .v{font-variant-numeric:tabular-nums;font-weight:600}
+  .big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .ok{background:rgba(34,197,94,.15);color:var(--ok)}
+  .warn{background:rgba(245,158,11,.15);color:var(--warn)}
+  .bad{background:rgba(239,68,68,.15);color:var(--bad)}
+  .mutpill{background:rgba(148,163,184,.15);color:var(--mut)}
+  .panel{background:var(--card);border-radius:12px;padding:18px;margin-bottom:22px;border:1px solid #334155}
+  .panel h2{margin:0 0 14px;font-size:16px}
+  canvas{max-height:320px}
+  table.evt{width:100%;border-collapse:collapse;font-size:14px}
+  table.evt th{text-align:left;color:var(--mut);font-weight:600;padding:6px 10px;border-bottom:1px solid #334155}
+  table.evt td{padding:6px 10px;border-bottom:1px solid #233044;font-variant-numeric:tabular-nums}
+  .range{display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap;font-size:14px}
+  .range a{padding:5px 12px;border-radius:8px;background:var(--card);border:1px solid #334155;color:var(--mut)}
+  .range a.active{color:var(--fg);border-color:var(--accent)}
+  .range .lbl{color:var(--mut);margin-left:6px}
+  .foot{color:var(--mut);font-size:12px;text-align:center;margin-top:30px}
+  .empty{color:var(--mut)}
+</style>
+</head>
+<body>
+<nav>
+  <a class="brand" href="/">📡 netmon</a>
+  <a class="item {% if request.url.path == '/' %}active{% endif %}" href="/">Přehled</a>
+  {% for n in networks | default([]) %}
+    <a class="item {% if request.url.path == '/net/' + n.name %}active{% endif %}"
+       href="/net/{{ n.name }}">{{ n.label }}</a>
+  {% endfor %}
+  <a class="item {% if request.url.path == '/compare' %}active{% endif %}" href="/compare">Porovnání</a>
+</nav>
+{% block content %}{% endblock %}
+<div class="foot">netmon 2 · evaluation server</div>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

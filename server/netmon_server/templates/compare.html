@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}netmon — porovnání sítí{% endblock %}
+{% block content %}
+<h1>Porovnání sítí</h1>
+<div class="sub">Překryté průběhy měřených sítí (latence a ztráty = průměr veřejných cílů).</div>
+{% include "_range.html" %}
+<div class="range">
+  {% for n in networks %}
+    {% set toggled = (selected | reject('equalto', n.name) | list) if n.name in selected
+                     else (selected + [n.name]) %}
+    <a href="?range={{ range }}&date={{ date }}&nets={{ toggled | join(',') }}"
+       class="{% if n.name in selected %}active{% endif %}">{{ n.label }}</a>
+  {% endfor %}
+</div>
+<div class="panel"><h2>Latence (ms)</h2><canvas id="cmpLat"></canvas></div>
+<div class="panel"><h2>Ztráta paketů (%)</h2><canvas id="cmpLoss"></canvas></div>
+<div class="panel"><h2>Rychlost stahování (Mbit/s)</h2><canvas id="cmpSpd"></canvas></div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.PAGE = {type: 'compare', nets: {{ selected | tojson }}, t0: {{ t0 }}, t1: {{ t1 }},
+               labels: { {% for n in networks %}{{ n.name | tojson }}: {{ n.label | tojson }}{% if not loop.last %},{% endif %}{% endfor %} }};
+netmonInit();
+</script>
+{% endblock %}

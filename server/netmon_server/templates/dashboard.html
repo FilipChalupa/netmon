@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}netmon — přehled sítí{% endblock %}
+{% block content %}
+<h1>Přehled sítí</h1>
+<div class="sub">Dnešní stav všech měřených sítí. Kliknutím na síť otevřeš detail.</div>
+<div class="cards" id="netcards"><p class="empty">Načítám…</p></div>
+{% endblock %}
+{% block scripts %}
+<script>window.PAGE = {type: 'dashboard'}; netmonInit();</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+# netmon server — seznam monitorů, ze kterých se stahují data.
+# Zkopíruj jako monitors.toml (v Dockeru na /data/monitors.toml).
+
+# Jak často se stahují nová data (sekundy).
+sync_interval = 30
+
+[[monitors]]
+name = "doma"                     # musí odpovídat 'network' v monitor.ini
+label = "Doma"
+url = "http://100.64.0.1:8787"    # Tailscale IP nebo MagicDNS jméno monitoru
+token = "tajny-token"             # stejný jako 'token' v monitor.ini
+
+[[monitors]]
+name = "chata"
+label = "Chata"
+url = "http://100.64.0.2:8787"
+token = "tajny-token"
