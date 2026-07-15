@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from . import VERSION
+from .alerts import alert_loop
 from .config import load_config
 from .db import init_db
 from .report import report_scheduler
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(sync_forever(cfg, stop), name="sync"),
         asyncio.create_task(report_scheduler(cfg, stop), name="report"),
+        asyncio.create_task(alert_loop(cfg, stop), name="alerts"),
     ]
     try:
         yield

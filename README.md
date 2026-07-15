@@ -104,6 +104,21 @@ python -m netmon_server.report --date 2026-07-14           # print + save HTML o
 SMTP_DRYRUN=1 python -m netmon_server.report --date 2026-07-14 --send   # .eml to disk
 ```
 
+## Email alerts
+
+With SMTP configured the server also alerts as things happen (checked every
+minute, one email per event — an ongoing outage alerts once, a backfilled
+batch of events is grouped into a single email):
+
+- **Outage** — a derived outage (local/internet) lasting at least
+  `NETMON_ALERT_MIN_OUTAGE_S` (default 60 s).
+- **Monitor unreachable** — sync has been failing for
+  `NETMON_ALERT_OFFLINE_S` (default 600 s); a recovery email follows when it
+  comes back. Note this only delays outage alerts: the monitor keeps
+  measuring locally and events are derived after backfill.
+
+Disable with `NETMON_ALERTS=0`.
+
 ## What is measured and how to read it
 
 | Probe | Interval | What it tells you |
@@ -143,5 +158,15 @@ python -m pytest tests/
 ```
 
 They cover outage derivation (including **parity with the original
-`events.sh`** on the same fixture), import idempotency, and incremental
-sync with cursors and token auth.
+`events.sh`** on the same fixture), import idempotency, incremental sync
+with cursors and token auth, and alerting (thresholds, dedup, recovery).
+
+## TODO / ideas
+
+- **Upload speed measurement** — the speed test is download-only (carried
+  over from the bash version). Cloudflare's `__up` endpoint could measure
+  upload too; useful for ISP complaints.
+- **Server DB backup** — monitors buffer only `retention_days` (90) of
+  data, so the server SQLite on the Coolify volume is the only long-term
+  copy. If the history matters, enable a volume backup in Coolify (or a
+  `sqlite3 .backup` cron / Litestream).

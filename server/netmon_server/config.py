@@ -34,6 +34,13 @@ class ServerConfig:
     ping_interval: float = 2.0   # for outage derivation; monitor's /api/info overrides
     monitors: list[MonitorCfg] = field(default_factory=list)
 
+    # alerting (see alerts.py); requires SMTP_* to actually send anything
+    alerts_enabled: bool = True
+    alert_min_outage_s: int = 60      # alert on outages at least this long
+    alert_offline_s: int = 600        # alert when a monitor hasn't synced this long
+    alert_interval: float = 60.0      # how often the alert loop checks
+    alert_lookback_s: int = 7200      # how far back to look for outage events
+
 
 def load_config() -> ServerConfig:
     cfg = ServerConfig(
@@ -41,6 +48,11 @@ def load_config() -> ServerConfig:
         monitors_path=os.environ.get("NETMON_MONITORS", ServerConfig.monitors_path),
         tz=os.environ.get("NETMON_TZ", ServerConfig.tz),
         report_hour=int(os.environ.get("NETMON_REPORT_HOUR", ServerConfig.report_hour)),
+        alerts_enabled=os.environ.get("NETMON_ALERTS", "1") != "0",
+        alert_min_outage_s=int(os.environ.get("NETMON_ALERT_MIN_OUTAGE_S",
+                                              ServerConfig.alert_min_outage_s)),
+        alert_offline_s=int(os.environ.get("NETMON_ALERT_OFFLINE_S",
+                                           ServerConfig.alert_offline_s)),
     )
     if os.path.exists(cfg.monitors_path):
         with open(cfg.monitors_path, "rb") as f:

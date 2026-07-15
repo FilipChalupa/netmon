@@ -101,6 +101,14 @@ CREATE TABLE IF NOT EXISTS meta(
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS alerts(
+    network_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,           -- 'outage' | 'offline'
+    key TEXT NOT NULL,            -- outage: event start_epoch; offline: 'state'
+    sent_at REAL,
+    PRIMARY KEY(network_id, kind, key)
+);
 """
 
 KINDS = ("latency", "reach", "speed", "uptime")
