@@ -42,6 +42,22 @@ loginctl enable-linger $USER  # keep measuring without a login session / after r
 
 Verify: `curl -H 'X-Netmon-Token: …' http://localhost:8787/api/health`
 
+### System-wide service (LXC containers, headless servers)
+
+Where no user session exists (e.g. a Proxmox LXC container), install the
+monitor as a system service instead — it runs as a dedicated `netmon` user
+with config in `/etc/netmon/monitor.ini` and data in `/var/lib/netmon/`:
+
+```bash
+apt install -y python3 iputils-ping   # everything the monitor needs
+sudo ./install.sh --system
+sudo nano /etc/netmon/monitor.ini && sudo systemctl restart netmon-monitor
+sudo ./install.sh --system --uninstall   # removal (keeps config + data)
+```
+
+For an unprivileged LXC with Tailscale, allow `/dev/net/tun` in the
+container config (standard Tailscale-in-LXC setup).
+
 Configuration (`monitor.ini`): ping targets (`gateway=auto` = default-route
 detection), intervals (ping 2 s, reach 30 s, speed hourly, heartbeat 1/min),
 API port, token, local data retention (90 days). Data volume: the hourly

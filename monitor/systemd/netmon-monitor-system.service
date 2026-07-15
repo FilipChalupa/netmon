@@ -1,0 +1,22 @@
+[Unit]
+Description=netmon monitor — connection quality measurement
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netmon
+Group=netmon
+ExecStart=/usr/bin/python3 -m netmon_monitor --config /etc/netmon/monitor.ini
+WorkingDirectory=/opt/netmon/monitor
+Environment=PYTHONPATH=/opt/netmon/monitor
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/netmon
+
+[Install]
+WantedBy=multi-user.target
