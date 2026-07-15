@@ -91,10 +91,12 @@ CREATE TABLE IF NOT EXISTS sync_status(
 
 CREATE TABLE IF NOT EXISTS imports(
     network_id INTEGER NOT NULL,
-    path TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    day TEXT NOT NULL,
     sha256 TEXT,
+    path TEXT,
     imported_at REAL,
-    PRIMARY KEY(network_id, path)
+    PRIMARY KEY(network_id, kind, day)
 );
 
 CREATE TABLE IF NOT EXISTS meta(
@@ -144,6 +146,13 @@ def init_db(path: str) -> None:
     conn = connect(path)
     try:
         conn.executescript(SCHEMA)
+        # migration: imports used to be keyed by (network_id, path) — content-hash
+        # dedup needs (network_id, kind, day). Dropping is safe: importing a file
+        # again first deletes that day's imported rows, so nothing duplicates.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(imports)")}
+        if "kind" not in cols:
+            conn.execute("DROP TABLE imports")
+            conn.executescript(SCHEMA)
         conn.commit()
     finally:
         conn.close()

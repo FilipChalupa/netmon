@@ -16,6 +16,7 @@ import csv
 import datetime
 import hashlib
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -24,6 +25,18 @@ from .config import load_config
 from .db import connect, get_or_create_network, init_db, insert_sql
 
 CSV_NAMES = ("latency.csv", "reach.csv", "speed.csv", "uptime.csv")
+
+DAY_RE = re.compile(r"^\d{8}$")
+
+
+def find_log_roots(root: str) -> list[str]:
+    """Directories that contain YYYYMMDD day subdirectories (for archive uploads
+    where the log tree may be nested, e.g. log-mpc/20260616/...)."""
+    roots = set()
+    for dirpath, dirnames, _ in os.walk(root):
+        if any(DAY_RE.fullmatch(d) for d in dirnames):
+            roots.add(dirpath)
+    return sorted(roots)
 
 
 def _epoch(ts_iso: str) -> float:
@@ -95,34 +108,39 @@ def _sha256(path: str) -> str:
 
 def import_file(conn: sqlite3.Connection, network_id: int, kind: str,
                 path: str, day: str, force: bool) -> int | None:
-    """Returns the number of inserted rows, None = skipped (already imported)."""
-    key = os.path.abspath(path)
+    """Returns the number of inserted rows, None = skipped (already imported).
+
+    Deduplication is by content (network, kind, day, sha256), not by path —
+    web uploads extract into a fresh temp directory every time, so paths
+    never repeat. Re-importing a day first removes its previously imported
+    rows (src_id IS NULL), so changed files replace instead of duplicating.
+    """
     digest = _sha256(path)
-    existing = conn.execute(
-        "SELECT sha256 FROM imports WHERE network_id=? AND path=?",
-        (network_id, key)).fetchone()
-    if existing and not force and existing["sha256"] == digest:
+    prev = conn.execute(
+        "SELECT sha256 FROM imports WHERE network_id=? AND kind=? AND day=?",
+        (network_id, kind, day)).fetchone()
+    if prev and not force and prev["sha256"] == digest:
         return None
 
     day_prefix = f"{day[0:4]}-{day[4:6]}-{day[6:8]}"
     with conn:
-        if existing or force:
-            # re-import: remove previously imported rows of that day first
+        if prev or force:
             conn.execute(
                 f"DELETE FROM {kind} WHERE network_id=? AND src_id IS NULL "
                 f"AND substr(ts_iso,1,10)=?", (network_id, day_prefix))
         cur = conn.executemany(insert_sql(kind), parse_rows(kind, path, network_id))
         inserted = cur.rowcount
         conn.execute(
-            "INSERT INTO imports(network_id, path, sha256, imported_at) VALUES(?,?,?,?) "
-            "ON CONFLICT(network_id, path) DO UPDATE SET sha256=excluded.sha256, "
-            "imported_at=excluded.imported_at",
-            (network_id, key, digest, time.time()))
+            "INSERT INTO imports(network_id, kind, day, sha256, path, imported_at) "
+            "VALUES(?,?,?,?,?,?) "
+            "ON CONFLICT(network_id, kind, day) DO UPDATE SET sha256=excluded.sha256, "
+            "path=excluded.path, imported_at=excluded.imported_at",
+            (network_id, kind, day, digest, os.path.abspath(path), time.time()))
     return inserted
 
 
 def import_tree(conn: sqlite3.Connection, network_id: int, log_root: str,
-                force: bool) -> dict:
+                force: bool, log=print) -> dict:
     stats = {"days": 0, "files": 0, "skipped": 0, "rows": 0}
     days = sorted(d for d in os.listdir(log_root)
                   if len(d) == 8 and d.isdigit()
@@ -142,7 +160,7 @@ def import_tree(conn: sqlite3.Connection, network_id: int, log_root: str,
                 stats["rows"] += n
                 day_rows += n
         stats["days"] += 1
-        print(f"  {day}: +{day_rows} rows")
+        log(f"  {day}: +{day_rows} rows")
     return stats
 
 

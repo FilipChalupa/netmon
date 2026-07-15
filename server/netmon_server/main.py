@@ -18,7 +18,7 @@ from .alerts import alert_loop
 from .config import load_config
 from .db import init_db
 from .report import report_scheduler
-from .routes import api, pages
+from .routes import api, import_web, pages
 from .sync import sync_forever
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -53,3 +53,4 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent /
           name="static")
 app.include_router(api.router)
 app.include_router(pages.router)
+app.include_router(import_web.router)

@@ -108,7 +108,15 @@ sudo ./install.sh --uninstall   # removal (keeps config + data)
 ## Importing old data (from the bash version)
 
 Historical CSVs from `log/YYYYMMDD/` on the measured hosts can be imported
-into the server database (each host under its own network):
+into the server database (each host under its own network).
+
+**Via the web** — set the `NETMON_IMPORT_TOKEN` environment variable (any
+secret string), open `/import`, pick the network (must match the
+`monitors.toml` name for live networks) and upload a `.zip` / `.tar.gz`
+archive of the `log/` tree (nesting like `log-mpc/20260616/…` is fine).
+Deduplication is content-based, so re-uploading the same data is safe.
+
+**Via the CLI:**
 
 ```bash
 scp -r home-host:~/netmon/log /tmp/log-home
