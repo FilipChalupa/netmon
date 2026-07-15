@@ -92,6 +92,19 @@ NETMON_DB=data/netmon.db NETMON_MONITORS=config/monitors.toml \
   uvicorn netmon_server.main:app --reload
 ```
 
+### Without Docker as a systemd service (e.g. a Proxmox LXC)
+
+The server can also run directly as a systemd service — dedicated `netmon`
+user, venv inside the checkout, config in `/etc/netmon/` (`server.env`,
+`monitors.toml`), database in `/var/lib/netmon-server/`:
+
+```bash
+apt install -y python3 python3-venv git
+git clone <repo> /opt/netmon && cd /opt/netmon/server
+sudo ./install.sh          # → web UI on :8000
+sudo ./install.sh --uninstall   # removal (keeps config + data)
+```
+
 ## Importing old data (from the bash version)
 
 Historical CSVs from `log/YYYYMMDD/` on the measured hosts can be imported

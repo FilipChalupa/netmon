@@ -1,0 +1,21 @@
+[Unit]
+Description=netmon evaluation server — central sync, web UI, reports
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netmon
+Group=netmon
+EnvironmentFile=/etc/netmon/server.env
+ExecStart=/opt/netmon/server/.venv/bin/uvicorn netmon_server.main:app --host 0.0.0.0 --port 8000
+WorkingDirectory=/opt/netmon/server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/netmon-server
+
+[Install]
+WantedBy=multi-user.target
