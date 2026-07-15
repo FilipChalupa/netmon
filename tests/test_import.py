@@ -1,4 +1,4 @@
-"""Importer: idempotence, --force, sentinel řádky, mapování hodnot."""
+"""Importer: idempotency, --force, sentinel rows, value mapping."""
 
 from pathlib import Path
 
@@ -28,16 +28,16 @@ def test_import_and_idempotence(conn):
     nid = get_or_create_network(conn, "doma", "Doma")
     s1 = import_tree(conn, nid, FIXTURE_LOG, force=False)
     c1 = counts(conn, nid)
-    # 36 datových řádků latence (sentinel '--' přeskočen), 3 reach, 3 speed, 5 uptime
+    # 36 latency data rows (sentinel '--' skipped), 3 reach, 3 speed, 5 uptime
     assert c1 == {"latency": 36, "reach": 3, "speed": 3, "uptime": 5}
     assert s1["rows"] == 47
 
-    # druhý import: soubory se přeskočí, počty se nezmění
+    # second import: files are skipped, counts stay unchanged
     s2 = import_tree(conn, nid, FIXTURE_LOG, force=False)
     assert s2["rows"] == 0 and s2["skipped"] == 4
     assert counts(conn, nid) == c1
 
-    # --force: znovu naimportuje, ale bez duplikátů
+    # --force: re-imports, but without duplicates
     s3 = import_tree(conn, nid, FIXTURE_LOG, force=True)
     assert s3["rows"] == 47
     assert counts(conn, nid) == c1
@@ -47,7 +47,7 @@ def test_value_mapping(conn):
     nid = get_or_create_network(conn, "doma", "Doma")
     import_tree(conn, nid, FIXTURE_LOG, force=False)
 
-    # LOSS řádek má NULL rtt
+    # a LOSS row has NULL rtt
     r = conn.execute("SELECT rtt_ms FROM latency WHERE network_id=? AND status='LOSS' LIMIT 1",
                      (nid,)).fetchone()
     assert r["rtt_ms"] is None
@@ -57,12 +57,12 @@ def test_value_mapping(conn):
                         "WHERE network_id=? AND down_mbps IS NULL", (nid,)).fetchone()
     assert fail["http_code"] == 0
 
-    # reach FAIL: '000' → 0, časy NULL
+    # reach FAIL: '000' → 0, timings NULL
     rf = conn.execute("SELECT dns_ms, http_code FROM reach "
                       "WHERE network_id=? AND status='FAIL'", (nid,)).fetchone()
     assert rf["dns_ms"] is None and rf["http_code"] == 0
 
-    # import nesahá na řádky ze syncu (src_id NOT NULL)
+    # import never touches rows that came from sync (src_id NOT NULL)
     conn.execute("INSERT INTO latency(network_id, src_id, ts_epoch, ts_iso, target, status) "
                  "VALUES(?, 999, 1.0, '2025-07-01T00:00:00+02:00', 'gateway', 'ok')", (nid,))
     conn.commit()

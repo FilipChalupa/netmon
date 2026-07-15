@@ -3,20 +3,20 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# lokální data evaluation serveru (SQLite + monitors.toml s tokeny)
+# local evaluation server data (SQLite + monitors.toml with tokens)
 server/data/
 server/config/monitors.toml
 
-# lokální SQLite monitoru (při ručním spuštění mimo ~/.local/share)
+# local monitor SQLite (when run manually outside ~/.local/share)
 *.db
 *.db-wal
 *.db-shm
 
-# lokální konfigurace e-mailu (SMTP přihlášení) — necommituj!
+# local email configuration (SMTP credentials) — never commit!
 /.env
 server/.env
 
-# --- pozůstatky bashové verze (data na měřicích strojích) ---
+# --- leftovers of the bash version (data on the measured hosts) ---
 log/
 /archiv/
 /report.html

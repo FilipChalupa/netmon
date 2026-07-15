@@ -1,4 +1,4 @@
-"""Odvození výpadků: očekávané intervaly + parita s legacy/events.sh."""
+"""Outage derivation: expected intervals + parity with legacy/events.sh."""
 
 import csv
 import shutil
@@ -35,26 +35,26 @@ def test_expected_events(conn, net_id):
     events = derive_events(conn, net_id, 0, 2e12, ping_interval=2)
     got = [(e.start_iso[11:19], e.end_iso[11:19], e.duration_s, e.scope) for e in events]
     assert got == [
-        ("10:00:02", "10:00:04", 2, "internet"),   # oba veřejné cíle
-        ("10:00:10", "10:00:12", 2, "local"),      # brána (dominuje i nad internet ztrátou)
-        ("10:00:14", "10:00:14", 2, "internet"),   # změna scope rozdělí interval
-        ("10:00:20", "10:00:20", 2, "internet"),   # 1kolový výpadek → min. délka
+        ("10:00:02", "10:00:04", 2, "internet"),   # both public targets
+        ("10:00:10", "10:00:12", 2, "local"),      # gateway (dominates even over internet loss)
+        ("10:00:14", "10:00:14", 2, "internet"),   # scope change splits the interval
+        ("10:00:20", "10:00:20", 2, "internet"),   # single-round outage → minimum duration
     ]
 
 
 def test_single_public_loss_is_not_event(conn, net_id):
-    # kolo 10:00:08 (jen quad9 LOSS) nesmí vytvořit událost
+    # the 10:00:08 round (quad9 LOSS only) must not create an event
     events = derive_events(conn, net_id, 0, 2e12, ping_interval=2)
     assert all(e.start_iso[11:19] != "10:00:08" for e in events)
 
 
 def test_gap_splits_event(conn):
-    """Výpadky přerušené dobou, kdy monitor neběžel, se nesmí slepit."""
+    """Outages interrupted by a period when the monitor was down must not merge."""
     nid = get_or_create_network(conn, "gap", "Gap")
     rows = [
         (1000.0, "T1", "quad9"), (1000.0, "T1", "google"),
         (1002.0, "T2", "quad9"), (1002.0, "T2", "google"),
-        # monitor 10 minut neběžel
+        # the monitor was down for 10 minutes
         (1602.0, "T3", "quad9"), (1602.0, "T3", "google"),
     ]
     for epoch, iso, target in rows:
@@ -67,9 +67,9 @@ def test_gap_splits_event(conn):
 
 
 @pytest.mark.skipif(not shutil.which("bash") or not LEGACY_EVENTS.exists(),
-                    reason="bash nebo legacy/events.sh není k dispozici")
+                    reason="bash or legacy/events.sh is not available")
 def test_parity_with_legacy_events_sh(conn, net_id, tmp_path):
-    """Python port musí dát stejné intervaly jako původní events.sh."""
+    """The Python port must produce the same intervals as the original events.sh."""
     workdir = tmp_path / "legacy"
     workdir.mkdir()
     shutil.copy(LEGACY_EVENTS, workdir / "events.sh")

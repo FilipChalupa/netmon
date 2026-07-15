@@ -1,4 +1,4 @@
-"""Sync: inkrementální pull z monitoru, kurzory, token."""
+"""Sync: incremental pull from a monitor, cursors, token."""
 
 import asyncio
 import threading
@@ -18,7 +18,7 @@ from netmon_server.config import ServerConfig
 
 @pytest.fixture
 def monitor(tmp_path):
-    """Monitor DB se seedovanými daty + běžící HTTP API na efemérním portu."""
+    """Monitor DB with seeded data + a running HTTP API on an ephemeral port."""
     mdb = MonitorDb(str(tmp_path / "monitor.db"))
     for i in range(7):
         ts = 1000.0 + 2 * i
@@ -64,7 +64,7 @@ def _pull(conn, url, token="tok", page_limit=None):
 
 
 def test_pull_and_cursor(server_conn, monitor):
-    # stránkovaně (limit 5) se stáhne všech 14 + 1 + 1 + 1 řádků
+    # paginated (limit 5), all 14 + 1 + 1 + 1 rows get pulled
     n = _pull(server_conn, monitor, page_limit=5)
     assert n == 17
 
@@ -78,7 +78,7 @@ def test_pull_and_cursor(server_conn, monitor):
     assert {r["kind"]: r["last_src_id"] for r in cur} == \
         {"latency": 14, "reach": 1, "speed": 1, "uptime": 1}
 
-    # druhý pull: nic nového
+    # second pull: nothing new
     assert _pull(server_conn, monitor) == 0
 
 
@@ -86,7 +86,7 @@ def test_wrong_token_raises_and_is_tracked(server_conn, monitor):
     with pytest.raises(httpx.HTTPStatusError):
         _pull(server_conn, monitor, token="spatny")
 
-    # sync_once chybu zachytí a zapíše do sync_status
+    # sync_once catches the error and records it in sync_status
     cfg = ServerConfig(monitors=[MonitorCfg(name="testnet", url=monitor, token="spatny")])
 
     async def run():
