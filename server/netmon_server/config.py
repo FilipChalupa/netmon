@@ -34,9 +34,6 @@ class ServerConfig:
     ping_interval: float = 2.0   # for outage derivation; monitor's /api/info overrides
     monitors: list[MonitorCfg] = field(default_factory=list)
 
-    # token for the /import upload page; empty = uploads disabled
-    import_token: str = ""
-
     # alerting (see alerts.py); requires SMTP_* to actually send anything
     alerts_enabled: bool = True
     alert_min_outage_s: int = 60      # alert on outages at least this long
@@ -51,7 +48,6 @@ def load_config() -> ServerConfig:
         monitors_path=os.environ.get("NETMON_MONITORS", ServerConfig.monitors_path),
         tz=os.environ.get("NETMON_TZ", ServerConfig.tz),
         report_hour=int(os.environ.get("NETMON_REPORT_HOUR", ServerConfig.report_hour)),
-        import_token=os.environ.get("NETMON_IMPORT_TOKEN", ""),
         alerts_enabled=os.environ.get("NETMON_ALERTS", "1") != "0",
         alert_min_outage_s=int(os.environ.get("NETMON_ALERT_MIN_OUTAGE_S",
                                               ServerConfig.alert_min_outage_s)),

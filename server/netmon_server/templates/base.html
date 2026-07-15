@@ -52,7 +52,6 @@
        href="/net/{{ n.name }}">{{ n.label }}</a>
   {% endfor %}
   <a class="item {% if request.url.path == '/compare' %}active{% endif %}" href="/compare">Compare</a>
-  <a class="item {% if request.url.path == '/import' %}active{% endif %}" href="/import">Import</a>
 </nav>
 {% block content %}{% endblock %}
 <div class="foot">netmon 2 · evaluation server</div>

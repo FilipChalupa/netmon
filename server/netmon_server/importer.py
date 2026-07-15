@@ -16,7 +16,6 @@ import csv
 import datetime
 import hashlib
 import os
-import re
 import sqlite3
 import sys
 import time
@@ -25,18 +24,6 @@ from .config import load_config
 from .db import connect, get_or_create_network, init_db, insert_sql
 
 CSV_NAMES = ("latency.csv", "reach.csv", "speed.csv", "uptime.csv")
-
-DAY_RE = re.compile(r"^\d{8}$")
-
-
-def find_log_roots(root: str) -> list[str]:
-    """Directories that contain YYYYMMDD day subdirectories (for archive uploads
-    where the log tree may be nested, e.g. log-mpc/20260616/...)."""
-    roots = set()
-    for dirpath, dirnames, _ in os.walk(root):
-        if any(DAY_RE.fullmatch(d) for d in dirnames):
-            roots.add(dirpath)
-    return sorted(roots)
 
 
 def _epoch(ts_iso: str) -> float:
