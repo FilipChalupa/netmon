@@ -62,6 +62,16 @@ def network_detail(request: Request, name: str, range: str = "day", date: str | 
     return templates.TemplateResponse(request, "network.html", ctx)
 
 
+@router.get("/help", response_class=HTMLResponse)
+def help_page(request: Request):
+    conn = connect(request.app.state.cfg.db_path)
+    try:
+        nets = [dict(n) for n in _networks(conn)]
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "help.html", {"networks": nets})
+
+
 @router.get("/compare", response_class=HTMLResponse)
 def compare(request: Request, range: str = "day", date: str | None = None,
             nets: str | None = None):

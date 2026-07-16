@@ -32,6 +32,9 @@
   .mutpill{background:rgba(148,163,184,.15);color:var(--mut)}
   .panel{background:var(--card);border-radius:12px;padding:18px;margin-bottom:22px;border:1px solid #334155}
   .panel h2{margin:0 0 14px;font-size:16px}
+  .panel p,.panel ul{margin:10px 0;max-width:75ch}
+  .panel li{margin:6px 0}
+  code{background:var(--bg);border:1px solid #334155;border-radius:5px;padding:1px 5px;font-size:13px}
   canvas{max-height:320px}
   table.evt{width:100%;border-collapse:collapse;font-size:14px}
   table.evt th{text-align:left;color:var(--mut);font-weight:600;padding:6px 10px;border-bottom:1px solid #334155}
@@ -73,6 +76,7 @@
        href="/net/{{ n.name }}">{{ n.label }}</a>
   {% endfor %}
   <a class="item {% if request.url.path == '/compare' %}active{% endif %}" href="/compare">Compare</a>
+  <a class="item {% if request.url.path == '/help' %}active{% endif %}" href="/help">How it works</a>
 </nav>
 {% block content %}{% endblock %}
 <div class="foot">netmon 2 · evaluation server</div>

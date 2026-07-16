@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}netmon — how it works{% endblock %}
+{% block content %}
+<h1>How it works</h1>
+<div class="sub">What each probe actually measures, how often, and how to read the numbers.
+Intervals and targets below are the defaults — every monitor can override them in its <code>monitor.ini</code>.</div>
+
+<div class="panel">
+  <h2>🏓 Latency &amp; packet loss (ping)</h2>
+  <p>Every <b>2&nbsp;s</b> the monitor sends a single ICMP ping (<code>ping -c 1 -W 2</code>)
+  to three targets:</p>
+  <table class="evt">
+    <thead><tr><th>target</th><th>address</th><th>what it tells you</th></tr></thead>
+    <tbody>
+      <tr><td><b>gateway</b></td><td>auto-detected from the default route</td>
+          <td>health of the local link — any loss here means cable, Wi-Fi, switch or router</td></tr>
+      <tr><td><b>quad9</b></td><td>9.9.9.9</td>
+          <td rowspan="2">the internet via two independent anycast networks — one of them
+          having a bad day doesn't look like your outage</td></tr>
+      <tr><td><b>google</b></td><td>8.8.8.8</td></tr>
+    </tbody>
+  </table>
+  <p>The reported <b>latency</b> is the round-trip time (RTT) of each reply. A ping with no
+  reply within the timeout counts as <b>LOSS</b>. Loss percentage is simply
+  <i>lost&nbsp;/&nbsp;sent</i> over the selected period or chart bucket.
+  Thresholds used across the UI: <span class="pill ok">≤ 0.1 % OK</span>
+  <span class="pill warn">&gt; 0.1 % minor loss</span>
+  <span class="pill bad">&gt; 1 % problem</span></p>
+</div>
+
+<div class="panel">
+  <h2>🛑 Outage detection</h2>
+  <p>Outages are derived from the ping rounds (all three targets are pinged at the same
+  moment, so they can be judged together):</p>
+  <ul>
+    <li><b>local</b> — the gateway didn't answer. The problem is on your side of the wall
+    socket, whatever the public targets did.</li>
+    <li><b>internet</b> — the gateway answered but <b>both</b> public targets were lost in
+    the same round. That's the provider, not your LAN.</li>
+    <li>Losing a <i>single</i> public target creates no event — one unlucky packet or one
+    anycast hiccup is noise, not an outage.</li>
+  </ul>
+  <p>Consecutive bad rounds of the same kind merge into one event; a gap longer than
+  2.5× the ping interval splits it (so time when the monitor itself wasn't running never
+  bridges two outages). The minimum reported duration is one ping interval.</p>
+</div>
+
+<div class="panel">
+  <h2>🌐 Service reachability — DNS / TCP / TLS</h2>
+  <p>Every <b>30&nbsp;s</b> the monitor opens
+  <code>https://www.google.com/generate_204</code> from scratch and times each phase
+  separately:</p>
+  <table class="evt">
+    <thead><tr><th>phase</th><th>measured as</th><th>slow / failing usually means</th></tr></thead>
+    <tbody>
+      <tr><td><b>DNS</b></td><td>resolving the hostname (<code>getaddrinfo</code>)</td>
+          <td>resolver problems — your router's DNS, the ISP resolver, or DNS interception</td></tr>
+      <tr><td><b>TCP</b></td><td>TCP connect to port 443</td>
+          <td>path congestion or packet filtering; roughly one network round trip</td></tr>
+      <tr><td><b>TLS</b></td><td>TLS handshake on the open connection</td>
+          <td>adds ~1–2 round trips + crypto; jumps when the path degrades or middleboxes interfere</td></tr>
+    </tbody>
+  </table>
+  <p>Then an HTTP GET must return a status code (expected 204). If <i>any</i> phase fails
+  or times out (10&nbsp;s total budget), the sample is recorded as <b>FAIL</b>. This is the
+  probe that catches the classic <i>“ping works but the internet doesn't”</i> — ICMP can
+  flow while DNS is down or TCP/443 is being dropped. Sustained FAILs also trigger an
+  e-mail alert even when ping loss is zero.</p>
+</div>
+
+<div class="panel">
+  <h2>⬇️ Download speed</h2>
+  <p>Every <b>hour</b> the monitor downloads a test file from
+  <code>speed.cloudflare.com</code> (default <b>50&nbsp;MB</b>) over a single HTTPS
+  connection and reports <i>bytes&nbsp;×&nbsp;8&nbsp;/&nbsp;seconds</i> in Mbit/s —
+  including DNS, connection setup and TLS, like a real download.</p>
+  <p><b>Adaptive sizing:</b> if the file finishes in under <b>3&nbsp;s</b>, the line is fast
+  enough that TCP ramp-up dominates and the result underestimates reality. The monitor then
+  immediately re-measures once with a payload sized for roughly a 6&nbsp;s download
+  (capped at <b>200&nbsp;MB</b>) and stores that result instead.</p>
+  <p>Things to keep in mind when reading the chart: it's one TCP stream (multi-stream
+  tests like Ookla can read higher), and it shares the line with whatever the household is
+  doing — a dip during the evening Netflix hour may be your own traffic, not the ISP.
+  The hourly cadence exists to show <i>patterns</i> (peak vs. night), not to benchmark.</p>
+</div>
+
+<div class="panel">
+  <h2>💓 Heartbeat &amp; measurement coverage</h2>
+  <p>Every <b>60&nbsp;s</b> the monitor writes a heartbeat; on a clean shutdown it writes a
+  final <code>STOP</code>. A gap longer than <b>150&nbsp;s</b> between heartbeats means the
+  monitor wasn't measuring at all. If the last event before the gap was a
+  <code>STOP</code>, the gap is shown as a <i>controlled stop</i>; otherwise as a
+  <i>crash / powered-off host</i>. <b>Coverage</b> is the share of the period the monitor
+  was actually running — outages can only be detected while it measures.</p>
+  <p><b>Monitor unreachable ≠ network outage:</b> monitors measure and store everything
+  locally; the server just pulls their data every 30&nbsp;s. When a monitor can't be
+  reached, the dashboard flags it, and once the connection returns, the buffered
+  measurements sync over — the history fills in retroactively.</p>
+</div>
+
+<div class="panel">
+  <h2>📊 Reading the charts</h2>
+  <ul>
+    <li><b>Bucketing:</b> chart series are averaged into time buckets (min 60&nbsp;s,
+    sized so a chart has at most ~1500 points). Loss per bucket is the loss percentage
+    within that bucket, which is why a single lost ping shows as a small bump rather
+    than 100&nbsp;%.</li>
+    <li><b>Shaded bands</b> are detected outages:
+    <span class="pill bad">red = local link</span>
+    <span class="pill warn">amber = internet / ISP</span></li>
+    <li><b>Yellow dashed lines</b> are your notes (📝) — hover for the text, click a chart
+    to add one at that moment.</li>
+    <li><b>Calendar heatmap:</b> one cell per day, colored by that day's packet loss on the
+    public targets only (the gateway is excluded — it would mix LAN problems into an
+    internet-quality view). Same thresholds as everywhere else; gray = the monitor wasn't
+    measuring that day.</li>
+    <li><b>Speed chart</b> shows raw hourly points, not bucketed averages.</li>
+  </ul>
+</div>
+{% endblock %}

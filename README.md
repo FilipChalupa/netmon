@@ -219,7 +219,7 @@ Monitor (`:8787`, `X-Netmon-Token` header):
 `GET /api/data/{latency|reach|speed|uptime}?after_id=N&limit=5000`
 
 Server (`:8000`): `GET /` dashboard · `GET /net/{name}?range=day|week|all&date=…`
-· `GET /compare?nets=a,b` · JSON: `/api/networks`,
+· `GET /compare?nets=a,b` · `GET /help` (how the probes measure) · JSON: `/api/networks`,
 `/api/net/{name}/{summary|series|events}?t0=…&t1=…`,
 `/api/net/{name}/heatmap?days=365`, `/api/health`, notes:
 `GET /api/notes?t0=…&t1=…&nets=a,b` · `POST /api/notes` · `DELETE /api/notes/{id}`
