@@ -30,7 +30,8 @@
 {% endblock %}
 {% block scripts %}
 <script>
-window.PAGE = {type: 'network', name: {{ net.name | tojson }}, t0: {{ t0 }}, t1: {{ t1 }}};
+window.PAGE = {type: 'network', name: {{ net.name | tojson }}, t0: {{ t0 }}, t1: {{ t1 }},
+               range: {{ range | tojson }}};
 netmonInit();
 </script>
 {% endblock %}

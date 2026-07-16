@@ -262,6 +262,7 @@ function enableDragZoom(chart, epochs) {
 function lineChart(id, labels, datasets, yLabel, overlays) {
   const el = document.getElementById(id);
   if (!el) return;
+  Chart.getChart(el)?.destroy();  // live refresh rebuilds the charts in place
   const opts = baseOpts(yLabel);
   if (overlays) opts.plugins.overlays = overlays;
   const chart = new Chart(el, {type: 'line', data: {labels, datasets}, options: opts});
@@ -541,10 +542,13 @@ async function pageNetwork() {
     fill: true, pointRadius: 3,
   }], 'Mbit/s', {epochs: spd.ts, marks});
 
-  // the year heatmap aggregates a lot of history — load it after the charts
-  getJSON(`/api/net/${name}/heatmap`)
-    .then(h => renderHeatmap(h.days))
-    .catch(() => renderHeatmap([]));
+  // the year heatmap aggregates a lot of history — load it once, after the charts
+  if (!window.$heatmapLoaded) {
+    window.$heatmapLoaded = true;
+    getJSON(`/api/net/${name}/heatmap`)
+      .then(h => renderHeatmap(h.days))
+      .catch(() => renderHeatmap([]));
+  }
 }
 
 async function pageDashboard() {
@@ -647,6 +651,25 @@ async function pageCompare() {
     }).filter(Boolean), 'Mbit/s', {epochs: spdAxis, marks});
 }
 
+/* Views whose range ends "now" quietly re-fetch every minute while visible,
+   so an open tab keeps showing live data. Sliding windows (24h/48h) move
+   both edges; day/week extend only the end. */
+function scheduleLiveRefresh(renderFn) {
+  const p = window.PAGE;
+  const live = p.type === 'dashboard' ||
+               (p.t1 != null && Date.now() / 1000 - p.t1 < 180);
+  if (!live) return;
+  setInterval(() => {
+    if (document.hidden) return;
+    if (p.t1 != null) {
+      const now = Date.now() / 1000;
+      if (p.range === '24h' || p.range === '48h') p.t0 = now - (p.t1 - p.t0);
+      p.t1 = now;
+    }
+    renderFn().catch(err => console.error('refresh failed:', err));
+  }, 60000);
+}
+
 function netmonInit() {
   initNoteForm();
   document.addEventListener('keydown', e => {
@@ -656,7 +679,7 @@ function netmonInit() {
     if (e.key === 'ArrowRight') document.getElementById('nextRange')?.click();
   });
   const fn = {network: pageNetwork, dashboard: pageDashboard, compare: pageCompare}[window.PAGE.type];
-  fn().catch(err => {
+  fn().then(() => scheduleLiveRefresh(fn)).catch(err => {
     console.error(err);
     document.body.insertAdjacentHTML('beforeend',
       `<div class="panel" style="border-color:var(--bad)">Failed to load data: ${err.message}</div>`);

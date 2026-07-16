@@ -21,6 +21,7 @@
 {% block scripts %}
 <script>
 window.PAGE = {type: 'compare', nets: {{ selected | tojson }}, t0: {{ t0 }}, t1: {{ t1 }},
+               range: {{ range | tojson }},
                labels: { {% for n in networks %}{{ n.name | tojson }}: {{ n.label | tojson }}{% if not loop.last %},{% endif %}{% endfor %} }};
 netmonInit();
 </script>
