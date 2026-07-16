@@ -43,7 +43,18 @@ class ServerConfig:
     alert_lookback_s: int = 7200      # how far back to look for outage events
 
 
+# single-mode (all-in-one binary) injects its config here instead of env/toml
+_override: ServerConfig | None = None
+
+
+def set_config_override(cfg: ServerConfig | None) -> None:
+    global _override
+    _override = cfg
+
+
 def load_config() -> ServerConfig:
+    if _override is not None:
+        return _override
     cfg = ServerConfig(
         db_path=os.environ.get("NETMON_DB", ServerConfig.db_path),
         monitors_path=os.environ.get("NETMON_MONITORS", ServerConfig.monitors_path),
