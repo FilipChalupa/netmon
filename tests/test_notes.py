@@ -1,4 +1,7 @@
-"""Notes: creation, network scoping, range filtering, deletion."""
+"""Notes: creation, network scoping, range filtering, deletion, daily report."""
+
+import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -79,6 +82,41 @@ def test_delete_cascades(conn, nets):
     links = conn.execute("SELECT COUNT(*) c FROM note_networks").fetchone()["c"]
     assert links == 0
     assert delete_note(conn, n["id"]) is False
+
+
+def test_report_includes_notes(tmp_path):
+    """The daily report body and HTML attachment carry that day's notes."""
+    from netmon_server.config import ServerConfig
+    from netmon_server.report import build_report
+
+    db_path = str(tmp_path / "report.db")
+    init_db(db_path)
+    conn = connect(db_path)
+    nid = get_or_create_network(conn, "home", "Home")
+    get_or_create_network(conn, "office", "Office")
+    day = datetime.date(2026, 7, 10)
+    noon = datetime.datetime.combine(day, datetime.time(12),
+                                     ZoneInfo("Europe/Prague")).timestamp()
+    for i in range(5):
+        conn.execute("INSERT INTO latency(network_id, ts_epoch, ts_iso, target, "
+                     "status, rtt_ms) VALUES(?,?,?,?,?,?)",
+                     (nid, noon + i * 2, "", "google", "OK", 10.0))
+    conn.commit()
+    create_note(conn, noon + 60, "router rebooted", ["home"])
+    create_note(conn, noon + 120, "ISP maintenance <window>", [])
+    create_note(conn, noon + 180, "office only", ["office"])
+    conn.close()
+
+    rep = build_report(ServerConfig(db_path=db_path), day)
+    assert rep is not None
+    _, text, attachments = rep
+    assert "router rebooted" in text
+    assert "ISP maintenance <window>" in text
+    assert "(general)" in text
+    assert "office only" not in text          # scoped to a different network
+    html_body = attachments[0][1].decode()
+    assert "router rebooted" in html_body
+    assert "ISP maintenance &lt;window&gt;" in html_body  # escaped
 
 
 def test_schema_migrates_existing_db(tmp_path):

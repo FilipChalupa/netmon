@@ -21,6 +21,7 @@ from .aggregate import summary
 from .config import ServerConfig, load_config
 from .db import connect, get_meta, init_db, set_meta
 from .mailer import send_email, smtp_configured
+from .notes import list_notes
 from .timerange import day_bounds
 
 log = logging.getLogger("netmon.report")
@@ -35,7 +36,16 @@ def _fmt_dur(s: float) -> str:
     return f"{s} s"
 
 
-def _net_text(label: str, s: dict) -> str:
+def _fmt_notes(notes: list[dict], tz: ZoneInfo) -> list[dict]:
+    """Notes as display rows: local HH:MM, text, scope label."""
+    return [{
+        "when": datetime.datetime.fromtimestamp(n["ts_epoch"], tz).strftime("%H:%M"),
+        "text": n["text"],
+        "scope": ", ".join(w["label"] for w in n["networks"]) or "general",
+    } for n in notes]
+
+
+def _net_text(label: str, s: dict, notes: list[dict] = ()) -> str:
     lines = [f"== {label} =="]
     lines.append(f"{'target':<10} {'samples':>8} {'loss':>8} {'avg':>8} {'min':>8} {'max':>8}")
     for t in s["targets"]:
@@ -63,10 +73,14 @@ def _net_text(label: str, s: dict) -> str:
                              f"· longest {_fmt_dur(e['longest_s'])} at {e['longest_at']}")
         for e in s["events"]:
             lines.append(f"  {e['start']} → {e['end'][11:19]}  {_fmt_dur(e['dur'])}  {e['note']}")
+    if notes:
+        lines.append("Notes:")
+        for n in notes:
+            lines.append(f"  {n['when']}  {n['text']}  ({n['scope']})")
     return "\n".join(lines)
 
 
-def _net_html(label: str, day: str, s: dict) -> str:
+def _net_html(label: str, day: str, s: dict, notes: list[dict] = ()) -> str:
     """Standalone HTML attachment — static tables, no JS."""
     def pill(loss):
         color = "#ef4444" if loss > 1 else "#f59e0b" if loss > 0.1 else "#22c55e"
@@ -99,6 +113,17 @@ def _net_html(label: str, day: str, s: dict) -> str:
 
     th = 'style="text-align:left;padding:6px 10px;border-bottom:1px solid #334155;color:#94a3b8"'
     table = 'style="width:100%;border-collapse:collapse;font-size:14px"'
+
+    notes_html = ""
+    if notes:
+        note_rows = "".join(
+            f"<tr><td>{n['when']}</td><td>{html.escape(n['text'])}</td>"
+            f"<td>{html.escape(n['scope'])}</td></tr>"
+            for n in notes)
+        notes_html = (f'<h2 style="font-size:16px">Notes</h2>'
+                      f"<table {table}><tr><th {th}>when</th><th {th}>note</th>"
+                      f"<th {th}>networks</th></tr>{note_rows}</table>")
+
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>netmon — {html.escape(label)} — {day}</title></head>
 <body style="margin:0;background:#0f172a;color:#e2e8f0;font:15px/1.5 system-ui,sans-serif;padding:24px">
@@ -111,6 +136,7 @@ def _net_html(label: str, day: str, s: dict) -> str:
 <table {table}><tr><th {th}>from</th><th {th}>to</th><th {th}>duration</th><th {th}>cause</th></tr>{gap_rows}</table>
 <h2 style="font-size:16px">Outages</h2>
 <table {table}><tr><th {th}>start</th><th {th}>end</th><th {th}>duration</th><th {th}>scope</th></tr>{ev_rows}</table>
+{notes_html}
 <p style="color:#94a3b8;font-size:12px">netmon 2 · daily report</p>
 </body></html>"""
 
@@ -118,6 +144,7 @@ def _net_html(label: str, day: str, s: dict) -> str:
 def build_report(cfg: ServerConfig, day: datetime.date):
     """Returns (subject, text, attachments), or None when there is no data."""
     t0, t1 = day_bounds(day, cfg.tz)
+    tz = ZoneInfo(cfg.tz)
     conn = connect(cfg.db_path)
     try:
         nets = conn.execute("SELECT * FROM networks ORDER BY name").fetchall()
@@ -126,10 +153,11 @@ def build_report(cfg: ServerConfig, day: datetime.date):
             s = summary(conn, net["id"], t0, t1, cfg.ping_interval)
             if not s["targets"]:
                 continue  # this network measured nothing that day
-            sections.append(_net_text(net["label"], s))
+            notes = _fmt_notes(list_notes(conn, t0, t1, [net["name"]]), tz)
+            sections.append(_net_text(net["label"], s, notes))
             attachments.append((
                 f"report-{net['name']}-{day.isoformat()}.html",
-                _net_html(net["label"], day.isoformat(), s).encode("utf-8"),
+                _net_html(net["label"], day.isoformat(), s, notes).encode("utf-8"),
                 "text", "html",
             ))
     finally:
