@@ -1,10 +1,21 @@
 <div class="range">
-  <a href="?range=day&date={{ date }}" class="{% if range == 'day' %}active{% endif %}">Day</a>
-  <a href="?range=week&date={{ date }}" class="{% if range == 'week' %}active{% endif %}">Week</a>
-  <a href="?range=all" class="{% if range == 'all' %}active{% endif %}">All</a>
-  {% if range != 'all' %}
-    <a href="?range={{ range }}&date={{ prev_date }}">‹</a>
-    {% if not is_today %}<a href="?range={{ range }}&date={{ next_date }}">›</a>{% endif %}
+  <a href="?range=day&date={{ date }}{{ extra_qs }}" class="{% if range == 'day' %}active{% endif %}">Day</a>
+  <a href="?range=week&date={{ date }}{{ extra_qs }}" class="{% if range == 'week' %}active{% endif %}">Week</a>
+  <a href="?range=all{{ extra_qs }}" class="{% if range == 'all' %}active{% endif %}">All</a>
+  {% if range == 'custom' %}
+    <a href="?range=custom&from={{ prev_from }}&to={{ prev_to }}{{ extra_qs }}">‹</a>
+    {% if next_from %}<a href="?range=custom&from={{ next_from }}&to={{ next_to }}{{ extra_qs }}">›</a>{% endif %}
+  {% elif range != 'all' %}
+    <a href="?range={{ range }}&date={{ prev_date }}{{ extra_qs }}">‹</a>
+    {% if not is_today %}<a href="?range={{ range }}&date={{ next_date }}{{ extra_qs }}">›</a>{% endif %}
   {% endif %}
+  <form class="rangepick" method="get">
+    <input type="hidden" name="range" value="custom">
+    {% if nets_param | default('') %}<input type="hidden" name="nets" value="{{ nets_param }}">{% endif %}
+    <input type="date" name="from" value="{{ from_date }}" required>
+    <span>–</span>
+    <input type="date" name="to" value="{{ to_date }}" required>
+    <button type="submit" class="{% if range == 'custom' %}active{% endif %}">Apply</button>
+  </form>
   <span class="lbl">{{ range_label }}</span>
 </div>

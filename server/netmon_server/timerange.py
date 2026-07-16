@@ -34,6 +34,17 @@ def resolve_range(range_: str, date_: str | None, tz_name: str) -> tuple[float, 
     return start.timestamp(), min(end.timestamp(), time.time()), f"{day:%b %-d, %Y}"
 
 
+def custom_bounds(d0: datetime.date, d1: datetime.date,
+                  tz_name: str) -> tuple[float, float, str]:
+    """Inclusive from/to days → (t0, t1, label); t1 capped at now."""
+    tz = ZoneInfo(tz_name)
+    start = datetime.datetime.combine(d0, datetime.time.min, tz)
+    end = datetime.datetime.combine(d1 + datetime.timedelta(days=1),
+                                    datetime.time.min, tz)
+    label = f"{d0:%b %-d, %Y}" if d0 == d1 else f"{d0:%b %-d} – {d1:%b %-d, %Y}"
+    return start.timestamp(), min(end.timestamp(), time.time()), label
+
+
 def day_bounds(day: datetime.date, tz_name: str) -> tuple[float, float]:
     tz = ZoneInfo(tz_name)
     start = datetime.datetime.combine(day, datetime.time.min, tz)
