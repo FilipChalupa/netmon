@@ -30,6 +30,24 @@ networks at once, with central evaluation and web charts.
   report). Kept as reference; `legacy/events.sh` is used in tests as the
   parity oracle for the outage algorithm.
 
+## Quick start: single binary (all-in-one)
+
+Download the binary for your OS from
+[Releases](../../releases) (Linux x86_64, macOS arm64/x86_64, Windows) and run:
+
+```bash
+./netmon --network home        # measure this machine's network + web UI on :8000
+```
+
+One process runs the measuring monitor *and* the results web server —
+open http://localhost:8000. Data lives in `~/.local/share/netmon/`
+(`--data-dir` to change). The monitor's pull API stays on :8787, so a
+central evaluation server can still adopt this instance later. Subcommands
+`netmon monitor` / `netmon server` run just one half; a `monitor.ini`
+(see below) is honored when present.
+
+Binaries are built by the release workflow on every `v*` tag.
+
 ## Installing a monitor (on every measured host)
 
 ```bash

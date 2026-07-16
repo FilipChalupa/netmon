@@ -1,0 +1,69 @@
+# Build single-file netmon binaries and attach them to the GitHub release.
+# Trigger: push a tag like v2.1.0 (create the release notes on GitHub, or let
+# this workflow create the release with generated notes).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04          # oldest LTS runner → binary runs on newer glibc
+            artifact: netmon-linux-x86_64
+            sep: ":"
+          - os: macos-14
+            artifact: netmon-macos-arm64
+            sep: ":"
+          - os: macos-13
+            artifact: netmon-macos-x86_64
+            sep: ":"
+          - os: windows-latest
+            artifact: netmon-windows-x86_64.exe
+            sep: ";"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r server/requirements.txt pyinstaller
+
+      - name: Build binary
+        shell: bash
+        run: >
+          pyinstaller --onefile --name netmon --clean --noconfirm
+          --paths server --paths monitor
+          --add-data "server/netmon_server/templates${{ matrix.sep }}netmon_server/templates"
+          --add-data "server/netmon_server/static${{ matrix.sep }}netmon_server/static"
+          --collect-submodules netmon_server
+          --collect-submodules netmon_monitor
+          --collect-submodules uvicorn
+          --exclude-module mcp.cli
+          --exclude-module pkg_resources
+          --hidden-import anyio._backends._asyncio
+          packaging/netmon_entry.py
+
+      - name: Smoke test
+        shell: bash
+        run: ./dist/netmon* --help
+
+      - name: Rename artifact
+        shell: bash
+        run: mv dist/netmon* dist/${{ matrix.artifact }}
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact }}
+          generate_release_notes: true
