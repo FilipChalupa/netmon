@@ -7,6 +7,21 @@
 <div class="cards" id="cards"></div>
 <div class="panel"><h2>⏱️ Measurement uptime</h2><div id="uptime"><p class="empty">Loading…</p></div></div>
 <div class="panel"><h2>🛑 Outages</h2><div id="events"><p class="empty">Loading…</p></div></div>
+<div class="panel"><h2>📝 Notes</h2>
+  <div id="noteList"><p class="empty">Loading…</p></div>
+  <form id="noteForm" class="noteform">
+    <input type="text" id="noteText" placeholder="What happened? (e.g. router restarted, ISP maintenance…)" required maxlength="500">
+    <input type="datetime-local" id="noteTs" required>
+    <button type="submit">Add note</button>
+    <div class="notenets">
+      <span>Applies to:</span>
+      {% for n in networks %}
+      <label><input type="checkbox" value="{{ n.name }}"{% if n.name == net.name %} checked{% endif %}> {{ n.label }}</label>
+      {% endfor %}
+      <span class="hint">— none selected = general note (all networks)</span>
+    </div>
+  </form>
+</div>
 <div class="panel"><h2>Latency over time (ms)</h2><canvas id="latChart"></canvas></div>
 <div class="panel"><h2>Packet loss (%)</h2><canvas id="lossChart"></canvas></div>
 <div class="panel"><h2>Service reachability — DNS / TCP / TLS (ms)</h2><canvas id="rchChart"></canvas></div>

@@ -42,6 +42,15 @@
   .range .lbl{color:var(--mut);margin-left:6px}
   .foot{color:var(--mut);font-size:12px;text-align:center;margin-top:30px}
   .empty{color:var(--mut)}
+  .noteform{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px;font-size:14px}
+  .noteform input[type=text]{flex:1;min-width:220px;background:var(--bg);border:1px solid #334155;border-radius:8px;padding:7px 10px;color:var(--fg);font:inherit}
+  .noteform input[type=datetime-local]{background:var(--bg);border:1px solid #334155;border-radius:8px;padding:6px 8px;color:var(--fg);font:inherit;color-scheme:dark}
+  .noteform button{background:var(--accent);color:#0f172a;font-weight:600;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+  .notenets{display:flex;gap:12px;flex-wrap:wrap;width:100%;font-size:13px;color:var(--mut)}
+  .notenets label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+  .notenets .hint{color:var(--mut);opacity:.8}
+  .notedel{background:none;border:0;color:var(--mut);cursor:pointer;font-size:14px;padding:2px 6px}
+  .notedel:hover{color:var(--bad)}
 </style>
 </head>
 <body>

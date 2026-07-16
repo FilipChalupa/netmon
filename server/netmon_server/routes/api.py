@@ -5,11 +5,13 @@ from __future__ import annotations
 import time
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from .. import VERSION
 from ..aggregate import latency_series, pick_bucket, reach_series, speed_points, summary
 from ..db import connect, get_network
 from ..events import derive_events
+from ..notes import create_note, delete_note, list_notes
 from ..timerange import resolve_range
 
 router = APIRouter(prefix="/api")
@@ -86,6 +88,45 @@ def net_series(request: Request, name: str, t0: float, t1: float):
             "reach": reach_series(conn, net_id, t0, t1, bucket),
             "speed": speed_points(conn, net_id, t0, t1),
         }
+    finally:
+        conn.close()
+
+
+class NoteIn(BaseModel):
+    text: str
+    ts_epoch: float
+    networks: list[str] = []
+
+
+@router.get("/notes")
+def notes_list(request: Request, t0: float, t1: float, nets: str | None = None):
+    """Notes in range; nets is a comma-separated filter (general notes always match)."""
+    names = [n.strip() for n in nets.split(",") if n.strip()] if nets else None
+    conn = _open(request)
+    try:
+        return list_notes(conn, t0, t1, names)
+    finally:
+        conn.close()
+
+
+@router.post("/notes", status_code=201)
+def notes_create(request: Request, note: NoteIn):
+    conn = _open(request)
+    try:
+        return create_note(conn, note.ts_epoch, note.text, note.networks)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
+@router.delete("/notes/{note_id}")
+def notes_delete(request: Request, note_id: int):
+    conn = _open(request)
+    try:
+        if not delete_note(conn, note_id):
+            raise HTTPException(404, f"Unknown note: {note_id}")
+        return {"ok": True}
     finally:
         conn.close()
 

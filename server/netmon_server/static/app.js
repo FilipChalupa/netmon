@@ -39,9 +39,121 @@ const baseOpts = yLabel => ({
   elements: {point: {radius: 0}}, spanGaps: true, animation: false
 });
 
-function lineChart(id, labels, datasets, yLabel) {
+/* ---------- notes: vertical markers drawn over the charts ---------- */
+
+const NOTE_COLOR = '#eab308';
+
+/* Fractional position of epoch t on a category axis whose ticks sit at `epochs`.
+   Returns null when t falls outside the axis span (plus one median step of slack). */
+function noteAxisPos(epochs, t) {
+  const n = epochs.length;
+  if (!n) return null;
+  if (n === 1) return Math.abs(t - epochs[0]) < 1 ? 0 : null;
+  const step = (epochs[n - 1] - epochs[0]) / (n - 1);
+  if (t < epochs[0] - step || t > epochs[n - 1] + step) return null;
+  if (t <= epochs[0]) return 0;
+  if (t >= epochs[n - 1]) return n - 1;
+  let i = 0;
+  while (i < n - 2 && epochs[i + 1] < t) i++;
+  return i + (t - epochs[i]) / (epochs[i + 1] - epochs[i]);
+}
+
+function wrapText(ctx, text, maxW) {
+  const lines = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const cand = line ? line + ' ' + word : word;
+      if (ctx.measureText(cand).width > maxW && line) { lines.push(line); line = word; }
+      else line = cand;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+const notesPlugin = {
+  id: 'noteMarks',
+  afterEvent(chart, args) {
+    const marks = chart.$noteXs;
+    if (!marks || !marks.length) return;
+    let hover = null;
+    if (args.event.type === 'mousemove' && args.inChartArea) {
+      let best = 9;
+      for (const m of marks) {
+        const d = Math.abs(args.event.x - m.px);
+        if (d < best) { best = d; hover = m; }
+      }
+    }
+    if (hover !== chart.$noteHover) { chart.$noteHover = hover; args.changed = true; }
+  },
+  afterDatasetsDraw(chart) {
+    const o = chart.options.plugins.noteMarks;
+    if (!o || !o.marks || !o.marks.length) return;
+    const xs = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+    chart.$noteXs = [];
+    ctx.save();
+    for (const m of o.marks) {
+      const pos = noteAxisPos(o.epochs, m.t);
+      if (pos == null) continue;
+      const i0 = Math.floor(pos), i1 = Math.min(i0 + 1, o.epochs.length - 1);
+      const p0 = xs.getPixelForValue(i0);
+      const px = p0 + (pos - i0) * (xs.getPixelForValue(i1) - p0);
+      if (px < area.left - 1 || px > area.right + 1) continue;
+      ctx.strokeStyle = NOTE_COLOR;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(px, area.top);
+      ctx.lineTo(px, area.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('📝', px, area.top - 3);
+      chart.$noteXs.push({px, note: m});
+    }
+    const h = chart.$noteHover;
+    if (h && chart.$noteXs.includes(h)) {
+      ctx.font = '12px system-ui, sans-serif';
+      const lines = [h.note.when + ' · ' + h.note.who, ...wrapText(ctx, h.note.text, 260)];
+      const w = Math.min(280, Math.max(...lines.map(l => ctx.measureText(l).width)) + 20);
+      const lh = 17, boxH = lines.length * lh + 12;
+      const x = Math.max(area.left, Math.min(h.px + 8, area.right - w));
+      const y = area.top + 8;
+      ctx.fillStyle = 'rgba(15,23,42,.95)';
+      ctx.strokeStyle = NOTE_COLOR;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, boxH, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      lines.forEach((l, i) => {
+        ctx.fillStyle = i === 0 ? '#94a3b8' : '#e2e8f0';
+        ctx.fillText(l, x + 10, y + 7 + i * lh);
+      });
+    }
+    ctx.restore();
+  }
+};
+Chart.register(notesPlugin);
+
+/* Marks for the plugin: which epoch each note sits at plus tooltip strings. */
+const noteMarks = notes => notes.map(n => ({
+  t: n.ts_epoch,
+  text: n.text,
+  when: fmtTs(n.ts_epoch, true),
+  who: n.networks.length ? n.networks.map(w => w.label).join(', ') : 'all networks',
+}));
+
+function lineChart(id, labels, datasets, yLabel, notes) {
   const el = document.getElementById(id);
-  if (el) new Chart(el, {type: 'line', data: {labels, datasets}, options: baseOpts(yLabel)});
+  if (!el) return;
+  const opts = baseOpts(yLabel);
+  if (notes) opts.plugins.noteMarks = notes;
+  new Chart(el, {type: 'line', data: {labels, datasets}, options: opts});
 }
 
 /* ---------- cards and panels of the network detail (per report-html.sh) ---------- */
@@ -132,15 +244,64 @@ function renderEvents(events) {
     `<th style="text-align:right">duration</th><th>scope</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/* ---------- notes panel ---------- */
+
+function renderNotes(notes) {
+  const el = document.getElementById('noteList');
+  if (!el) return;
+  if (!notes.length) {
+    el.innerHTML = '<p class="empty" style="margin:0 0 10px">No notes in this period.</p>';
+    return;
+  }
+  const rows = notes.slice().sort((a, b) => b.ts_epoch - a.ts_epoch).map(n => {
+    const nets = n.networks.length
+      ? n.networks.map(w => `<span class="pill mutpill">${w.label}</span>`).join(' ')
+      : '<span class="pill ok">general</span>';
+    return `<tr><td style="white-space:nowrap">${fmtTs(n.ts_epoch, true)}</td>` +
+           `<td style="width:100%">${n.text}</td><td>${nets}</td>` +
+           `<td><button class="notedel" data-id="${n.id}" title="Delete note">✕</button></td></tr>`;
+  }).join('');
+  el.innerHTML = `<table class="evt"><thead><tr><th>when</th><th>note</th>` +
+    `<th>networks</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.querySelectorAll('.notedel').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Delete this note?')) return;
+    const r = await fetch('/api/notes/' + btn.dataset.id, {method: 'DELETE'});
+    if (r.ok) location.reload(); else alert('Delete failed: HTTP ' + r.status);
+  }));
+}
+
+function initNoteForm() {
+  const form = document.getElementById('noteForm');
+  if (!form) return;
+  const ts = document.getElementById('noteTs');
+  const now = new Date();
+  now.setSeconds(0, 0);
+  ts.value = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = {
+      text: document.getElementById('noteText').value,
+      ts_epoch: new Date(ts.value).getTime() / 1000,
+      networks: [...form.querySelectorAll('.notenets input:checked')].map(i => i.value),
+    };
+    const r = await fetch('/api/notes', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    });
+    if (r.ok) location.reload();
+    else alert('Saving the note failed: HTTP ' + r.status + ' ' + (await r.text()));
+  });
+}
+
 /* ---------- pages ---------- */
 
 async function pageNetwork() {
   const {name, t0, t1} = window.PAGE;
   const longRange = t1 - t0 > 86400 * 1.5;
   const q = `t0=${t0}&t1=${t1}`;
-  const [sum, series] = await Promise.all([
+  const [sum, series, notes] = await Promise.all([
     getJSON(`/api/net/${name}/summary?${q}`),
     getJSON(`/api/net/${name}/series?${q}`),
+    getJSON(`/api/notes?${q}&nets=${name}`).catch(() => []),
   ]);
   if (sum.period.first) {
     document.getElementById('period').textContent =
@@ -149,6 +310,8 @@ async function pageNetwork() {
   renderCards(sum);
   renderUptime(sum.uptime);
   renderEvents(sum.events);
+  renderNotes(notes);
+  const marks = noteMarks(notes);
 
   const lat = series.latency;
   const labels = lat.buckets.map(b => fmtTs(b, longRange));
@@ -156,25 +319,25 @@ async function pageNetwork() {
   lineChart('latChart', labels, targetNames.map((t, i) => ({
     label: t, data: lat.targets[t].rtt, borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25,
-  })), 'ms');
+  })), 'ms', {epochs: lat.buckets, marks});
   lineChart('lossChart', labels, targetNames.map((t, i) => ({
     label: t, data: lat.targets[t].loss, borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25, fill: false,
-  })), '% loss');
+  })), '% loss', {epochs: lat.buckets, marks});
 
   const rch = series.reach;
   lineChart('rchChart', rch.buckets.map(b => fmtTs(b, longRange)), [
     {label: 'DNS', data: rch.dns, borderColor: '#34d399', backgroundColor: '#34d399', borderWidth: 1.6, tension: .25},
     {label: 'TCP', data: rch.tcp, borderColor: '#fbbf24', backgroundColor: '#fbbf24', borderWidth: 1.6, tension: .25},
     {label: 'TLS', data: rch.tls, borderColor: '#fb7185', backgroundColor: '#fb7185', borderWidth: 1.6, tension: .25},
-  ], 'ms');
+  ], 'ms', {epochs: rch.buckets, marks});
 
   const spd = series.speed;
   lineChart('spdChart', spd.ts.map(t => fmtTs(t, longRange)), [{
     label: 'download', data: spd.mbps, borderColor: '#38bdf8',
     backgroundColor: 'rgba(56,189,248,.15)', borderWidth: 2, tension: .3,
     fill: true, pointRadius: 3,
-  }], 'Mbit/s');
+  }], 'Mbit/s', {epochs: spd.ts, marks});
 }
 
 async function pageDashboard() {
@@ -222,8 +385,11 @@ async function pageCompare() {
   const {nets, t0, t1} = window.PAGE;
   const longRange = t1 - t0 > 86400 * 1.5;
   const q = `t0=${t0}&t1=${t1}`;
-  const series = await Promise.all(
-    nets.map(n => getJSON(`/api/net/${n}/series?${q}`).catch(() => null)));
+  const [series, notes] = await Promise.all([
+    Promise.all(nets.map(n => getJSON(`/api/net/${n}/series?${q}`).catch(() => null))),
+    getJSON(`/api/notes?${q}&nets=${nets.join(',')}`).catch(() => []),
+  ]);
+  const marks = noteMarks(notes);
 
   const bucketSet = new Set();
   series.forEach(s => s && s.latency.buckets.forEach(b => bucketSet.add(b)));
@@ -248,8 +414,8 @@ async function pageCompare() {
     backgroundColor: colorForNet(i), borderWidth: 1.8, tension: .25,
   })).filter(Boolean);
 
-  lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms');
-  lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss');
+  lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms', {epochs: buckets, marks});
+  lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss', {epochs: buckets, marks});
 
   // speed: unified axis from raw points
   const spdTs = new Set();
@@ -263,10 +429,11 @@ async function pageCompare() {
       series[i].speed.ts.forEach((t, j) => data[spdIdx.get(t)] = series[i].speed.mbps[j]);
       return {label: netLabel(n), data, borderColor: colorForNet(i), backgroundColor: colorForNet(i),
               borderWidth: 2, tension: .3, pointRadius: 3, spanGaps: true};
-    }).filter(Boolean), 'Mbit/s');
+    }).filter(Boolean), 'Mbit/s', {epochs: spdAxis, marks});
 }
 
 function netmonInit() {
+  initNoteForm();
   const fn = {network: pageNetwork, dashboard: pageDashboard, compare: pageCompare}[window.PAGE.type];
   fn().catch(err => {
     console.error(err);

@@ -111,6 +111,21 @@ CREATE TABLE IF NOT EXISTS alerts(
     sent_at REAL,
     PRIMARY KEY(network_id, kind, key)
 );
+
+CREATE TABLE IF NOT EXISTS notes(
+    id INTEGER PRIMARY KEY,
+    ts_epoch REAL NOT NULL,
+    text TEXT NOT NULL,
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_ts ON notes(ts_epoch);
+
+-- which networks a note applies to; no rows = general note (applies to all)
+CREATE TABLE IF NOT EXISTS note_networks(
+    note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    network_id INTEGER NOT NULL REFERENCES networks(id),
+    PRIMARY KEY(note_id, network_id)
+);
 """
 
 KINDS = ("latency", "reach", "speed", "uptime")
