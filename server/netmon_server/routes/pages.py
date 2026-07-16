@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ..db import connect, get_network
-from ..timerange import custom_bounds, resolve_range
+from ..timerange import custom_ctx, resolve_range
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -23,30 +23,12 @@ def _range_ctx(request: Request, range_: str, date_: str | None,
 
     if range_ == "custom":
         try:
-            d0 = datetime.date.fromisoformat(from_ or "")
-            d1 = datetime.date.fromisoformat(to_ or from_ or "")
+            ctx = custom_ctx(from_, to_, cfg.tz)
         except ValueError:
             range_ = "day"  # malformed picker input → fall back to today
         else:
-            if d1 < d0:
-                d0, d1 = d1, d0
-            t0, t1, label = custom_bounds(d0, d1, cfg.tz)
-            span = datetime.timedelta(days=(d1 - d0).days + 1)
-            day = datetime.timedelta(days=1)
-            return {
-                "range": "custom",
-                "date": today.isoformat(),
-                "t0": t0,
-                "t1": t1,
-                "range_label": label,
-                "from_date": d0.isoformat(),
-                "to_date": d1.isoformat(),
-                "prev_from": (d0 - span).isoformat(),
-                "prev_to": (d0 - day).isoformat(),
-                "next_from": (d1 + day).isoformat() if d1 < today else None,
-                "next_to": min(d1 + span, today).isoformat(),
-                "is_today": d1 >= today,
-            }
+            ctx["date"] = today.isoformat()
+            return ctx
 
     t0, t1, label = resolve_range(range_, date_, cfg.tz)
     day = date_ or today.isoformat()

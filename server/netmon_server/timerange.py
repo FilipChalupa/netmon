@@ -39,15 +39,62 @@ def resolve_range(range_: str, date_: str | None, tz_name: str) -> tuple[float, 
     return start.timestamp(), min(end.timestamp(), time.time()), f"{day:%b %-d, %Y}"
 
 
-def custom_bounds(d0: datetime.date, d1: datetime.date,
-                  tz_name: str) -> tuple[float, float, str]:
-    """Inclusive from/to days → (t0, t1, label); t1 capped at now."""
+def _parse_point(s: str) -> tuple[datetime.datetime, bool]:
+    """ISO date or datetime string → (naive datetime, was_date_only)."""
+    if len(s) == 10:
+        return (datetime.datetime.combine(datetime.date.fromisoformat(s),
+                                          datetime.time.min), True)
+    return datetime.datetime.fromisoformat(s), False
+
+
+def custom_ctx(from_: str | None, to_: str | None, tz_name: str) -> dict:
+    """range=custom template context from from/to query params.
+
+    Accepts YYYY-MM-DD (inclusive days, the date picker) or
+    YYYY-MM-DDTHH:MM (exact span, drag-to-zoom links). Swapped bounds are
+    normalized; malformed input raises ValueError. The ‹ › links page by
+    the range's own length and keep its granularity.
+    """
     tz = ZoneInfo(tz_name)
-    start = datetime.datetime.combine(d0, datetime.time.min, tz)
-    end = datetime.datetime.combine(d1 + datetime.timedelta(days=1),
-                                    datetime.time.min, tz)
-    label = f"{d0:%b %-d, %Y}" if d0 == d1 else f"{d0:%b %-d} – {d1:%b %-d, %Y}"
-    return start.timestamp(), min(end.timestamp(), time.time()), label
+    p0, only0 = _parse_point(from_ or "")
+    p1, only1 = _parse_point(to_ or from_ or "")
+    if p1 < p0:
+        (p0, only0), (p1, only1) = (p1, only1), (p0, only0)
+    dates_only = only0 and only1
+    end = p1 + datetime.timedelta(days=1) if only1 else p1
+    if end <= p0:
+        raise ValueError("empty range")
+    t0 = p0.replace(tzinfo=tz).timestamp()
+    t1 = end.replace(tzinfo=tz).timestamp()
+    now = time.time()
+
+    if dates_only:
+        label = (f"{p0:%b %-d, %Y}" if p0.date() == p1.date()
+                 else f"{p0:%b %-d} – {p1:%b %-d, %Y}")
+        fmt = lambda dt: dt.date().isoformat()  # noqa: E731
+    elif p0.date() == end.date():
+        label = f"{p0:%b %-d, %Y} · {p0:%H:%M} – {end:%H:%M}"
+        fmt = lambda dt: dt.isoformat(timespec="minutes")  # noqa: E731
+    else:
+        label = f"{p0:%b %-d %H:%M} – {end:%b %-d %H:%M, %Y}"
+        fmt = lambda dt: dt.isoformat(timespec="minutes")  # noqa: E731
+
+    span = end - p0
+    has_next = t1 < now - 60
+    return {
+        "range": "custom",
+        "t0": t0,
+        "t1": min(t1, now),
+        "range_label": label,
+        # the date inputs are day-granular even when zoomed below a day
+        "from_date": p0.date().isoformat(),
+        "to_date": (p1 if only1 else end).date().isoformat(),
+        "prev_from": fmt(p0 - span),
+        "prev_to": fmt(p1 - span),
+        "next_from": fmt(p0 + span) if has_next else None,
+        "next_to": fmt(p1 + span) if has_next else None,
+        "is_today": not has_next,
+    }
 
 
 def day_bounds(day: datetime.date, tz_name: str) -> tuple[float, float]:

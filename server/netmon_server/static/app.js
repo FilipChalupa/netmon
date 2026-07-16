@@ -116,9 +116,20 @@ const overlaysPlugin = {
     if (hover !== chart.$noteHover) { chart.$noteHover = hover; args.changed = true; }
   },
   afterDatasetsDraw(chart) {
+    const area = chart.chartArea, sel = chart.$dragSel;
+    if (sel) {
+      const ctx0 = chart.ctx;
+      ctx0.save();
+      ctx0.fillStyle = 'rgba(56,189,248,.15)';
+      ctx0.strokeStyle = 'rgba(56,189,248,.6)';
+      const x0 = Math.min(sel.x0, sel.x1), x1 = Math.max(sel.x0, sel.x1);
+      ctx0.fillRect(x0, area.top, x1 - x0, area.bottom - area.top);
+      ctx0.strokeRect(x0 + .5, area.top + .5, x1 - x0 - 1, area.bottom - area.top - 1);
+      ctx0.restore();
+    }
     const o = chart.options.plugins.overlays;
     if (!o || !o.marks || !o.marks.length) return;
-    const xs = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+    const xs = chart.scales.x, ctx = chart.ctx;
     chart.$noteXs = [];
     ctx.save();
     for (const m of o.marks) {
@@ -178,31 +189,83 @@ function epochToLocalInput(t) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
-/* Clicking a chart prefills the note form with the clicked moment. */
-function prefillNoteAt(evt, chart, epochs) {
+/* Inverse of the axis mapping: canvas x-pixel → epoch (null off-axis). */
+function pxToEpoch(chart, epochs, x) {
   const xs = chart.scales.x, area = chart.chartArea, n = epochs.length;
-  const form = document.getElementById('noteForm');
-  if (!form || n < 2) return;
-  const x = Math.min(Math.max(evt.x, area.left), area.right);
+  if (n < 2) return null;
+  const cx = Math.min(Math.max(x, area.left), area.right);
   const p0 = xs.getPixelForValue(0), p1 = xs.getPixelForValue(n - 1);
-  if (p1 <= p0) return;
-  const pos = Math.min(Math.max((x - p0) / (p1 - p0) * (n - 1), 0), n - 1);
+  if (p1 <= p0) return null;
+  const pos = Math.min(Math.max((cx - p0) / (p1 - p0) * (n - 1), 0), n - 1);
   const i = Math.min(Math.floor(pos), n - 2);
-  const t = epochs[i] + (pos - i) * (epochs[i + 1] - epochs[i]);
+  return epochs[i] + (pos - i) * (epochs[i + 1] - epochs[i]);
+}
+
+/* Clicking a chart prefills the note form with the clicked moment. */
+function prefillNoteAt(chart, epochs, x) {
+  const form = document.getElementById('noteForm');
+  const t = pxToEpoch(chart, epochs, x);
+  if (!form || t == null) return;
   document.getElementById('noteTs').value = epochToLocalInput(t);
   form.scrollIntoView({behavior: 'smooth', block: 'center'});
   document.getElementById('noteText').focus({preventScroll: true});
+}
+
+/* Navigate to a custom range covering [t0, t1] (minute granularity). */
+function zoomTo(t0, t1) {
+  const q = new URLSearchParams(window.location.search);
+  q.set('range', 'custom');
+  q.set('from', epochToLocalInput(t0));
+  q.set('to', epochToLocalInput(t1));
+  q.delete('date');
+  window.location.search = q.toString();
+}
+
+/* Drag on a chart selects a time span and zooms into it; a plain click
+   prefills the note form instead. */
+function enableDragZoom(chart, epochs) {
+  const canvas = chart.canvas;
+  canvas.style.cursor = 'crosshair';
+  let startX = null;
+  const relX = e => e.clientX - canvas.getBoundingClientRect().left;
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    startX = relX(e);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (startX == null) return;
+    chart.$dragSel = {x0: startX, x1: relX(e)};
+    chart.draw();
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (startX == null) return;
+    const x0 = startX, x1 = relX(e);
+    startX = null;
+    chart.$dragSel = null;
+    chart.draw();
+    if (Math.abs(x1 - x0) < 8) {
+      prefillNoteAt(chart, epochs, x1);
+      return;
+    }
+    const tA = pxToEpoch(chart, epochs, Math.min(x0, x1));
+    const tB = pxToEpoch(chart, epochs, Math.max(x0, x1));
+    if (tA != null && tB != null && tB - tA >= 60) zoomTo(tA, tB);
+  });
+  canvas.addEventListener('pointercancel', () => {
+    startX = null;
+    chart.$dragSel = null;
+    chart.draw();
+  });
 }
 
 function lineChart(id, labels, datasets, yLabel, overlays) {
   const el = document.getElementById(id);
   if (!el) return;
   const opts = baseOpts(yLabel);
-  if (overlays) {
-    opts.plugins.overlays = overlays;
-    opts.onClick = (evt, els, chart) => prefillNoteAt(evt, chart, overlays.epochs);
-  }
-  new Chart(el, {type: 'line', data: {labels, datasets}, options: opts});
+  if (overlays) opts.plugins.overlays = overlays;
+  const chart = new Chart(el, {type: 'line', data: {labels, datasets}, options: opts});
+  if (overlays) enableDragZoom(chart, overlays.epochs);
 }
 
 /* ---------- cards and panels of the network detail (per report-html.sh) ---------- */
@@ -285,7 +348,11 @@ function renderEvents(events) {
   head += '</div>';
   const rows = events.slice().sort((a, b) => b.dur - a.dur).map(e => {
     const local = e.scope === 'local';
-    return `<tr><td>${fmtIso(e.start)}</td><td>${fmtIso(e.end).slice(11)}</td>` +
+    const pad = Math.max(300, e.dur);  // zoom to the outage with breathing room
+    const zoom = `?range=custom&from=${epochToLocalInput(e.start_epoch - pad)}` +
+                 `&to=${epochToLocalInput(e.end_epoch + pad)}`;
+    return `<tr><td><a href="${zoom}" title="Zoom to this outage">${fmtIso(e.start)}</a></td>` +
+           `<td>${fmtIso(e.end).slice(11)}</td>` +
            `<td style="text-align:right">${fmtDur(e.dur)}</td>` +
            `<td><span class="pill ${local ? 'bad' : 'warn'}">${local ? 'local link' : 'internet / ISP'}</span></td></tr>`;
   }).join('');
