@@ -1,8 +1,14 @@
-"""Measurement probes — stdlib only (subprocess ping, sockets, urllib)."""
+"""Measurement probes — stdlib only (subprocess ping, sockets, urllib).
+
+Cross-platform: Linux and macOS shell out to `ping`; Windows uses the
+IcmpSendEcho API via ctypes (locale-independent, exact RTT — parsing the
+localized `ping.exe` output would be fragile) with a subprocess fallback.
+"""
 
 from __future__ import annotations
 
 import ipaddress
+import platform
 import re
 import socket
 import ssl
@@ -11,37 +17,131 @@ import time
 import urllib.parse
 import urllib.request
 
-_RTT_RE = re.compile(r"time=([0-9.]+) ms")
+_SYSTEM = platform.system()  # 'Linux' | 'Darwin' | 'Windows'
+_RTT_RE_UNIX = re.compile(r"time=([0-9.]+) ms")
+_RTT_RE_WIN = re.compile(r"[=<]([0-9]+)\s*ms")  # matches localized time=13ms / čas<1ms
+_WIN_NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW: no console flash from a service
+
+_GATEWAY_CMDS = {
+    "Linux": ["ip", "route", "show", "default"],
+    "Darwin": ["route", "-n", "get", "default"],
+    "Windows": ["route", "print", "0.0.0.0"],
+}
 
 
-def detect_gateway(fallback: str | None = None) -> str | None:
-    """Default gateway IP from `ip route show default` (survives network changes)."""
-    try:
-        out = subprocess.run(
-            ["ip", "route", "show", "default"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return fallback
+def _parse_gateway(out: str, system: str) -> str | None:
+    if system == "Darwin":
+        for line in out.splitlines():
+            key, _, value = line.partition(":")
+            if key.strip() == "gateway":
+                return value.strip() or None
+        return None
+    if system == "Windows":
+        # the persistent/active route tables print "0.0.0.0  0.0.0.0  <gw> ..."
+        for line in out.splitlines():
+            fields = line.split()
+            if len(fields) >= 3 and fields[0] == "0.0.0.0" and fields[1] == "0.0.0.0":
+                try:
+                    return str(ipaddress.ip_address(fields[2]))
+                except ValueError:
+                    continue
+        return None
     fields = out.split()
     if "via" in fields:
         return fields[fields.index("via") + 1]
-    return fallback
+    return None
 
 
-def ping_target(ip: str, timeout: float) -> tuple[str, float | None]:
+def detect_gateway(fallback: str | None = None, system: str = _SYSTEM) -> str | None:
+    """Default gateway IP from the OS routing table (survives network changes)."""
+    try:
+        out = subprocess.run(
+            _GATEWAY_CMDS.get(system, _GATEWAY_CMDS["Linux"]),
+            capture_output=True, text=True, timeout=5,
+            creationflags=_WIN_NO_WINDOW if system == "Windows" else 0,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return fallback
+    return _parse_gateway(out, system) or fallback
+
+
+def _ping_cmd(ip: str, timeout: float, system: str) -> list[str]:
+    if system == "Windows":
+        return ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
+    if system == "Darwin":
+        return ["ping", "-n", "-c", "1", "-W", str(int(timeout * 1000)), ip]
+    return ["ping", "-n", "-c", "1", "-W", str(int(timeout)), ip]
+
+
+def _parse_rtt(out: str, system: str) -> float | None:
+    m = (_RTT_RE_WIN if system == "Windows" else _RTT_RE_UNIX).search(out)
+    return float(m.group(1)) if m else None
+
+
+def _ping_windows_icmp(ip: str, timeout: float):
+    """IPv4 ping via iphlpapi.IcmpSendEcho.
+
+    Returns ("ok", rtt_ms), ("LOSS", None), or None when the API is
+    unavailable (caller falls back to subprocess ping).
+    """
+    import ctypes
+
+    class IP_OPTION_INFORMATION(ctypes.Structure):
+        _fields_ = [("Ttl", ctypes.c_ubyte), ("Tos", ctypes.c_ubyte),
+                    ("Flags", ctypes.c_ubyte), ("OptionsSize", ctypes.c_ubyte),
+                    ("OptionsData", ctypes.c_void_p)]
+
+    class ICMP_ECHO_REPLY(ctypes.Structure):
+        _fields_ = [("Address", ctypes.c_ulong), ("Status", ctypes.c_ulong),
+                    ("RoundTripTime", ctypes.c_ulong), ("DataSize", ctypes.c_ushort),
+                    ("Reserved", ctypes.c_ushort), ("Data", ctypes.c_void_p),
+                    ("Options", IP_OPTION_INFORMATION)]
+
+    try:
+        iphlpapi = ctypes.windll.iphlpapi
+        addr = int.from_bytes(socket.inet_aton(ip), "little")
+    except (AttributeError, OSError):
+        return None
+    handle = iphlpapi.IcmpCreateFile()
+    if handle in (0, -1):
+        return None
+    try:
+        payload = b"netmon-ping"
+        buf_size = ctypes.sizeof(ICMP_ECHO_REPLY) + len(payload) + 8
+        buf = ctypes.create_string_buffer(buf_size)
+        n = iphlpapi.IcmpSendEcho(handle, addr, payload, len(payload), None,
+                                  buf, buf_size, int(timeout * 1000))
+        if n == 0:
+            return "LOSS", None
+        reply = ctypes.cast(buf, ctypes.POINTER(ICMP_ECHO_REPLY)).contents
+        if reply.Status != 0:  # 0 = IP_SUCCESS; anything else = no usable reply
+            return "LOSS", None
+        return "ok", float(reply.RoundTripTime)
+    finally:
+        iphlpapi.IcmpCloseHandle(handle)
+
+
+def ping_target(ip: str, timeout: float, system: str = _SYSTEM) -> tuple[str, float | None]:
     """Single ping. Returns ("ok", rtt_ms) or ("LOSS", None)."""
+    if system == "Windows":
+        result = _ping_windows_icmp(ip, timeout)
+        if result is not None:
+            return result
     try:
         res = subprocess.run(
-            ["ping", "-n", "-c", "1", "-W", str(int(timeout)), ip],
+            _ping_cmd(ip, timeout, system),
             capture_output=True, text=True, timeout=timeout + 3,
+            creationflags=_WIN_NO_WINDOW if system == "Windows" else 0,
         )
     except (OSError, subprocess.TimeoutExpired):
         return "LOSS", None
-    if res.returncode != 0:
+    ok = res.returncode == 0
+    if system == "Windows":
+        # "Destination host unreachable" exits 0 but has no TTL= in the reply
+        ok = ok and "TTL=" in res.stdout.upper()
+    if not ok:
         return "LOSS", None
-    m = _RTT_RE.search(res.stdout)
-    return "ok", float(m.group(1)) if m else None
+    return "ok", _parse_rtt(res.stdout, system)
 
 
 def reach_probe(url: str, total_timeout: float = 10.0):
