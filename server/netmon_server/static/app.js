@@ -39,23 +39,35 @@ const baseOpts = yLabel => ({
   elements: {point: {radius: 0}}, spanGaps: true, animation: false
 });
 
-/* ---------- notes: vertical markers drawn over the charts ---------- */
+/* ---------- chart overlays: note markers + outage bands ---------- */
 
 const NOTE_COLOR = '#eab308';
+const BAND_COLORS = {local: 'rgba(239,68,68,.18)', internet: 'rgba(245,158,11,.18)'};
 
 /* Fractional position of epoch t on a category axis whose ticks sit at `epochs`.
-   Returns null when t falls outside the axis span (plus one median step of slack). */
-function noteAxisPos(epochs, t) {
+   Returns null when t falls outside the axis span (plus one median step of slack);
+   with clamp=true out-of-range values snap to the axis edges instead. */
+function noteAxisPos(epochs, t, clamp) {
   const n = epochs.length;
   if (!n) return null;
-  if (n === 1) return Math.abs(t - epochs[0]) < 1 ? 0 : null;
-  const step = (epochs[n - 1] - epochs[0]) / (n - 1);
-  if (t < epochs[0] - step || t > epochs[n - 1] + step) return null;
+  if (n === 1) return (clamp || Math.abs(t - epochs[0]) < 1) ? 0 : null;
+  if (!clamp) {
+    const step = (epochs[n - 1] - epochs[0]) / (n - 1);
+    if (t < epochs[0] - step || t > epochs[n - 1] + step) return null;
+  }
   if (t <= epochs[0]) return 0;
   if (t >= epochs[n - 1]) return n - 1;
   let i = 0;
   while (i < n - 2 && epochs[i + 1] < t) i++;
   return i + (t - epochs[i]) / (epochs[i + 1] - epochs[i]);
+}
+
+function epochToPx(xs, epochs, t, clamp) {
+  const pos = noteAxisPos(epochs, t, clamp);
+  if (pos == null) return null;
+  const i0 = Math.floor(pos), i1 = Math.min(i0 + 1, epochs.length - 1);
+  const p0 = xs.getPixelForValue(i0);
+  return p0 + (pos - i0) * (xs.getPixelForValue(i1) - p0);
 }
 
 function wrapText(ctx, text, maxW) {
@@ -72,8 +84,24 @@ function wrapText(ctx, text, maxW) {
   return lines;
 }
 
-const notesPlugin = {
-  id: 'noteMarks',
+const overlaysPlugin = {
+  id: 'overlays',
+  beforeDatasetsDraw(chart) {
+    const o = chart.options.plugins.overlays;
+    if (!o || !o.bands || !o.bands.length || o.epochs.length < 2) return;
+    const xs = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+    const first = o.epochs[0], last = o.epochs[o.epochs.length - 1];
+    ctx.save();
+    for (const b of o.bands) {
+      if (b.t1 < first || b.t0 > last) continue;
+      let x0 = epochToPx(xs, o.epochs, b.t0, true);
+      let x1 = epochToPx(xs, o.epochs, b.t1, true);
+      if (x1 - x0 < 2) { const c = (x0 + x1) / 2; x0 = c - 1; x1 = c + 1; }
+      ctx.fillStyle = BAND_COLORS[b.scope] || BAND_COLORS.internet;
+      ctx.fillRect(x0, area.top, x1 - x0, area.bottom - area.top);
+    }
+    ctx.restore();
+  },
   afterEvent(chart, args) {
     const marks = chart.$noteXs;
     if (!marks || !marks.length) return;
@@ -88,18 +116,14 @@ const notesPlugin = {
     if (hover !== chart.$noteHover) { chart.$noteHover = hover; args.changed = true; }
   },
   afterDatasetsDraw(chart) {
-    const o = chart.options.plugins.noteMarks;
+    const o = chart.options.plugins.overlays;
     if (!o || !o.marks || !o.marks.length) return;
     const xs = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
     chart.$noteXs = [];
     ctx.save();
     for (const m of o.marks) {
-      const pos = noteAxisPos(o.epochs, m.t);
-      if (pos == null) continue;
-      const i0 = Math.floor(pos), i1 = Math.min(i0 + 1, o.epochs.length - 1);
-      const p0 = xs.getPixelForValue(i0);
-      const px = p0 + (pos - i0) * (xs.getPixelForValue(i1) - p0);
-      if (px < area.left - 1 || px > area.right + 1) continue;
+      const px = epochToPx(xs, o.epochs, m.t);
+      if (px == null || px < area.left - 1 || px > area.right + 1) continue;
       ctx.strokeStyle = NOTE_COLOR;
       ctx.lineWidth = 1.2;
       ctx.setLineDash([5, 4]);
@@ -138,7 +162,7 @@ const notesPlugin = {
     ctx.restore();
   }
 };
-Chart.register(notesPlugin);
+Chart.register(overlaysPlugin);
 
 /* Marks for the plugin: which epoch each note sits at plus tooltip strings. */
 const noteMarks = notes => notes.map(n => ({
@@ -148,11 +172,36 @@ const noteMarks = notes => notes.map(n => ({
   who: n.networks.length ? n.networks.map(w => w.label).join(', ') : 'all networks',
 }));
 
-function lineChart(id, labels, datasets, yLabel, notes) {
+function epochToLocalInput(t) {
+  const d = new Date(t * 1000);
+  d.setSeconds(0, 0);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+/* Clicking a chart prefills the note form with the clicked moment. */
+function prefillNoteAt(evt, chart, epochs) {
+  const xs = chart.scales.x, area = chart.chartArea, n = epochs.length;
+  const form = document.getElementById('noteForm');
+  if (!form || n < 2) return;
+  const x = Math.min(Math.max(evt.x, area.left), area.right);
+  const p0 = xs.getPixelForValue(0), p1 = xs.getPixelForValue(n - 1);
+  if (p1 <= p0) return;
+  const pos = Math.min(Math.max((x - p0) / (p1 - p0) * (n - 1), 0), n - 1);
+  const i = Math.min(Math.floor(pos), n - 2);
+  const t = epochs[i] + (pos - i) * (epochs[i + 1] - epochs[i]);
+  document.getElementById('noteTs').value = epochToLocalInput(t);
+  form.scrollIntoView({behavior: 'smooth', block: 'center'});
+  document.getElementById('noteText').focus({preventScroll: true});
+}
+
+function lineChart(id, labels, datasets, yLabel, overlays) {
   const el = document.getElementById(id);
   if (!el) return;
   const opts = baseOpts(yLabel);
-  if (notes) opts.plugins.noteMarks = notes;
+  if (overlays) {
+    opts.plugins.overlays = overlays;
+    opts.onClick = (evt, els, chart) => prefillNoteAt(evt, chart, overlays.epochs);
+  }
   new Chart(el, {type: 'line', data: {labels, datasets}, options: opts});
 }
 
@@ -274,9 +323,7 @@ function initNoteForm() {
   const form = document.getElementById('noteForm');
   if (!form) return;
   const ts = document.getElementById('noteTs');
-  const now = new Date();
-  now.setSeconds(0, 0);
-  ts.value = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  ts.value = epochToLocalInput(Date.now() / 1000);
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const body = {
@@ -312,6 +359,7 @@ async function pageNetwork() {
   renderEvents(sum.events);
   renderNotes(notes);
   const marks = noteMarks(notes);
+  const bands = sum.events.map(e => ({t0: e.start_epoch, t1: e.end_epoch, scope: e.scope}));
 
   const lat = series.latency;
   const labels = lat.buckets.map(b => fmtTs(b, longRange));
@@ -319,18 +367,18 @@ async function pageNetwork() {
   lineChart('latChart', labels, targetNames.map((t, i) => ({
     label: t, data: lat.targets[t].rtt, borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25,
-  })), 'ms', {epochs: lat.buckets, marks});
+  })), 'ms', {epochs: lat.buckets, marks, bands});
   lineChart('lossChart', labels, targetNames.map((t, i) => ({
     label: t, data: lat.targets[t].loss, borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25, fill: false,
-  })), '% loss', {epochs: lat.buckets, marks});
+  })), '% loss', {epochs: lat.buckets, marks, bands});
 
   const rch = series.reach;
   lineChart('rchChart', rch.buckets.map(b => fmtTs(b, longRange)), [
     {label: 'DNS', data: rch.dns, borderColor: '#34d399', backgroundColor: '#34d399', borderWidth: 1.6, tension: .25},
     {label: 'TCP', data: rch.tcp, borderColor: '#fbbf24', backgroundColor: '#fbbf24', borderWidth: 1.6, tension: .25},
     {label: 'TLS', data: rch.tls, borderColor: '#fb7185', backgroundColor: '#fb7185', borderWidth: 1.6, tension: .25},
-  ], 'ms', {epochs: rch.buckets, marks});
+  ], 'ms', {epochs: rch.buckets, marks, bands});
 
   const spd = series.speed;
   lineChart('spdChart', spd.ts.map(t => fmtTs(t, longRange)), [{

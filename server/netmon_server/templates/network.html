@@ -18,7 +18,7 @@
       {% for n in networks %}
       <label><input type="checkbox" value="{{ n.name }}"{% if n.name == net.name %} checked{% endif %}> {{ n.label }}</label>
       {% endfor %}
-      <span class="hint">— none selected = general note (all networks)</span>
+      <span class="hint">— none selected = general note (all networks) · tip: click a chart to prefill the time</span>
     </div>
   </form>
 </div>
