@@ -530,6 +530,12 @@ async function pageCompare() {
 
 function netmonInit() {
   initNoteForm();
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey ||
+        /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === 'ArrowLeft') document.getElementById('prevRange')?.click();
+    if (e.key === 'ArrowRight') document.getElementById('nextRange')?.click();
+  });
   const fn = {network: pageNetwork, dashboard: pageDashboard, compare: pageCompare}[window.PAGE.type];
   fn().catch(err => {
     console.error(err);

@@ -58,8 +58,8 @@ def _range_ctx(request: Request, range_: str, date_: str | None,
         "t1": t1,
         "range_label": label,
         # picker prefill mirroring the active range (all → today)
-        "from_date": (d - datetime.timedelta(days=6)).isoformat() if range_ == "week"
-                     else day,
+        "from_date": (d - datetime.timedelta(
+            days={"week": 6, "24h": 1, "48h": 2}.get(range_, 0))).isoformat(),
         "to_date": day,
         "prev_date": (d - datetime.timedelta(days=1)).isoformat(),
         "next_date": (d + datetime.timedelta(days=1)).isoformat(),

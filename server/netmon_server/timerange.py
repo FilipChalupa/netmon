@@ -15,6 +15,11 @@ def resolve_range(range_: str, date_: str | None, tz_name: str) -> tuple[float, 
     if range_ == "all":
         return 0.0, time.time(), "entire measurement"
 
+    if range_ in ("24h", "48h"):
+        hours = int(range_[:-1])
+        end = time.time()
+        return end - hours * 3600, end, f"last {hours} h"
+
     if date_:
         day = datetime.date.fromisoformat(date_)
     else:
