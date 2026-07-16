@@ -406,6 +406,50 @@ function initNoteForm() {
   });
 }
 
+/* ---------- dashboard sparklines (24 h latency + loss highlights) ---------- */
+
+function drawSparkline(canvas, series) {
+  const lat = series.latency;
+  const n = lat.buckets.length;
+  if (n < 2) { canvas.closest('.sparkwrap').style.display = 'none'; return; }
+  const pubs = PUBLIC_TARGETS.map(t => lat.targets[t]).filter(Boolean);
+  const avg = j => {
+    const vals = pubs.map(t => t.rtt[j]).filter(v => v != null);
+    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null;
+  };
+  const rtt = Array.from({length: n}, (_, j) => avg(j));
+  const loss = Array.from({length: n}, (_, j) =>
+    Math.max(0, ...pubs.map(t => t.loss[j]).filter(v => v != null)));
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const x = j => j / (n - 1) * w;
+
+  // loss first, behind the line: amber >0.1 %, red >1 %
+  loss.forEach((l, j) => {
+    if (l <= 0.1) return;
+    ctx.fillStyle = l > 1 ? 'rgba(239,68,68,.55)' : 'rgba(245,158,11,.45)';
+    ctx.fillRect(x(j) - 1, 0, 2, h);
+  });
+
+  const max = Math.max(...rtt.filter(v => v != null), 1);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  let pen = false;
+  rtt.forEach((v, j) => {
+    if (v == null) { pen = false; return; }
+    const y = h - 2 - (v / max) * (h - 6);
+    pen ? ctx.lineTo(x(j), y) : ctx.moveTo(x(j), y);
+    pen = true;
+  });
+  ctx.stroke();
+}
+
 /* ---------- calendar heatmap (GitHub-style, one cell per local day) ---------- */
 
 function renderHeatmap(days) {
@@ -539,8 +583,16 @@ async function pageDashboard() {
         <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' Mbit/s' : '—'}</span></div>
         <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
         <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
+        <div class="sparkwrap"><canvas class="spark" id="spark-${n.name}"></canvas><span>last 24 h</span></div>
       </div>`);
   });
+
+  // sparklines: 24h latency of the public targets, loss ticks behind
+  const now = Date.now() / 1000;
+  await Promise.all(nets.map(n =>
+    getJSON(`/api/net/${n.name}/series?t0=${now - 86400}&t1=${now}`)
+      .then(s => drawSparkline(document.getElementById(`spark-${n.name}`), s))
+      .catch(() => {})));
 }
 
 /* Comparison: latency and loss = average of public targets per network, on a unified axis. */
