@@ -339,6 +339,49 @@ function initNoteForm() {
   });
 }
 
+/* ---------- calendar heatmap (GitHub-style, one cell per local day) ---------- */
+
+function renderHeatmap(days) {
+  const el = document.getElementById('heatmap');
+  if (!el) return;
+  if (!days.some(d => d.samples > 0)) {
+    el.innerHTML = '<p class="empty" style="margin:0">No data yet.</p>';
+    return;
+  }
+  const cls = d => d.loss == null ? 'hm-none'
+             : d.loss > 1 ? 'hm-bad' : d.loss > 0.1 ? 'hm-warn' : 'hm-ok';
+  const noon = d => new Date(d.day + 'T12:00:00');
+  const offset = (noon(days[0]).getDay() + 6) % 7;   // week columns start on Monday
+  const cells = [...Array(offset).fill(null), ...days];
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  let lastMonth = -1;
+  const months = weeks.map(w => {
+    const d0 = w.find(Boolean);
+    if (!d0) return '';
+    const m = noon(d0).getMonth();
+    if (m === lastMonth) return '';
+    lastMonth = m;
+    return noon(d0).toLocaleDateString('en-GB', {month: 'short'});
+  });
+
+  const cell = d => {
+    if (!d) return '<span class="hm"></span>';
+    const tip = d.day + ' · ' + (d.loss == null ? 'no data'
+      : `loss ${d.loss.toFixed(2)}% · ${d.samples.toLocaleString('en')} samples`);
+    return `<a class="hm ${cls(d)}" href="/net/${window.PAGE.name}?range=day&date=${d.day}" title="${tip}"></a>`;
+  };
+  el.innerHTML =
+    `<div class="hm-months">${months.map(m => `<span>${m}</span>`).join('')}</div>` +
+    `<div class="hm-grid">${weeks.map(w => `<div class="hm-week">${w.map(cell).join('')}</div>`).join('')}</div>` +
+    `<div class="hm-legend">Internet packet loss per day:
+       <span class="hm hm-ok"></span> ≤ 0.1%
+       <span class="hm hm-warn"></span> ≤ 1%
+       <span class="hm hm-bad"></span> &gt; 1%
+       <span class="hm hm-none"></span> no data · click a day to open it</div>`;
+}
+
 /* ---------- pages ---------- */
 
 async function pageNetwork() {
@@ -386,6 +429,11 @@ async function pageNetwork() {
     backgroundColor: 'rgba(56,189,248,.15)', borderWidth: 2, tension: .3,
     fill: true, pointRadius: 3,
   }], 'Mbit/s', {epochs: spd.ts, marks});
+
+  // the year heatmap aggregates a lot of history — load it after the charts
+  getJSON(`/api/net/${name}/heatmap`)
+    .then(h => renderHeatmap(h.days))
+    .catch(() => renderHeatmap([]));
 }
 
 async function pageDashboard() {

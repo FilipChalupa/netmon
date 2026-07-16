@@ -7,9 +7,11 @@ like the old version; longer ranges thin themselves out).
 
 from __future__ import annotations
 
+import datetime
 import sqlite3
+from zoneinfo import ZoneInfo
 
-from .events import derive_events, events_summary
+from .events import PUBLIC_TARGETS, derive_events, events_summary
 
 UPTIME_GAP_THRESHOLD = 150  # s; a heartbeat gap longer than this = measuring wasn't running
 MAX_POINTS = 1500
@@ -91,6 +93,46 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
         "mbps": [r["down_mbps"] for r in rows],
         "fails": fails,
     }
+
+
+def daily_heatmap(conn: sqlite3.Connection, network_id: int, tz_name: str,
+                  days: int = 365, end_day: datetime.date | None = None,
+                  public_targets: tuple[str, ...] = PUBLIC_TARGETS) -> list[dict]:
+    """Per-local-day packet loss on the public targets, for the calendar heatmap.
+
+    Aggregates per hour in SQL, then assigns hours to local days in Python —
+    hour buckets align with civil time (whole-hour offsets), so day boundaries
+    stay DST-correct without fetching millions of raw rows.
+    """
+    tz = ZoneInfo(tz_name)
+    if end_day is None:
+        end_day = datetime.datetime.now(tz).date()
+    start_day = end_day - datetime.timedelta(days=days - 1)
+    t0 = datetime.datetime.combine(start_day, datetime.time.min, tz).timestamp()
+    t1 = datetime.datetime.combine(end_day + datetime.timedelta(days=1),
+                                   datetime.time.min, tz).timestamp()
+    marks = ", ".join("?" * len(public_targets))
+    rows = conn.execute(
+        f"SELECT CAST(ts_epoch/3600 AS INT)*3600 AS hour, COUNT(*) AS n, "
+        f"       SUM(status='LOSS') AS lost "
+        f"FROM latency WHERE network_id=? AND ts_epoch>=? AND ts_epoch<? "
+        f"AND target IN ({marks}) GROUP BY hour",
+        (network_id, t0, t1, *public_targets),
+    ).fetchall()
+    agg: dict[datetime.date, list[int]] = {}
+    for r in rows:
+        d = datetime.datetime.fromtimestamp(r["hour"], tz).date()
+        a = agg.setdefault(d, [0, 0])
+        a[0] += r["n"]
+        a[1] += r["lost"]
+    out = []
+    d = start_day
+    while d <= end_day:
+        n, lost = agg.get(d, (0, 0))
+        out.append({"day": d.isoformat(), "samples": n,
+                    "loss": round(100.0 * lost / n, 2) if n else None})
+        d += datetime.timedelta(days=1)
+    return out
 
 
 def uptime_panel(conn: sqlite3.Connection, network_id: int,

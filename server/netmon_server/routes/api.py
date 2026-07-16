@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from .. import VERSION
-from ..aggregate import latency_series, pick_bucket, reach_series, speed_points, summary
+from ..aggregate import (daily_heatmap, latency_series, pick_bucket, reach_series,
+                         speed_points, summary)
 from ..db import connect, get_network
 from ..events import derive_events
 from ..notes import create_note, delete_note, list_notes
@@ -88,6 +89,17 @@ def net_series(request: Request, name: str, t0: float, t1: float):
             "reach": reach_series(conn, net_id, t0, t1, bucket),
             "speed": speed_points(conn, net_id, t0, t1),
         }
+    finally:
+        conn.close()
+
+
+@router.get("/net/{name}/heatmap")
+def net_heatmap(request: Request, name: str, days: int = 365):
+    cfg = request.app.state.cfg
+    conn = _open(request)
+    try:
+        return {"days": daily_heatmap(conn, _net_id(conn, name), cfg.tz,
+                                      min(max(days, 1), 2 * 366))}
     finally:
         conn.close()
 
