@@ -17,6 +17,7 @@ from . import VERSION
 from .alerts import alert_loop
 from .config import load_config
 from .db import init_db
+from .mcp_server import mcp
 from .report import report_scheduler
 from .routes import api, pages
 from .sync import sync_forever
@@ -40,7 +41,8 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(alert_loop(cfg, stop), name="alerts"),
     ]
     try:
-        yield
+        async with mcp.session_manager.run():
+            yield
     finally:
         stop.set()
         for t in tasks:
@@ -51,5 +53,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="netmon", version=VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
           name="static")
+# MCP endpoint for LLM clients: claude mcp add --transport http netmon http://host:8000/mcp
+app.mount("/mcp", mcp.streamable_http_app())
 app.include_router(api.router)
 app.include_router(pages.router)

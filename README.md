@@ -226,6 +226,20 @@ Server (`:8000`): `GET /` dashboard ·
 `/api/net/{name}/heatmap?days=365`, `/api/health`, notes:
 `GET /api/notes?t0=…&t1=…&nets=a,b` · `POST /api/notes` · `DELETE /api/notes/{id}`
 
+### MCP (LLM clients)
+
+The server exposes an MCP endpoint at `/mcp` (streamable HTTP) so Claude Code
+or Claude Desktop can query the monitoring data directly:
+
+```bash
+claude mcp add --transport http netmon http://<server>:8000/mcp
+```
+
+Tools: `list_networks`, `get_summary`, `get_speed_history`,
+`get_daily_heatmap`, `get_notes`, `add_note` (the only write operation).
+The endpoint shares the web UI's trust boundary — keep it on a trusted
+network (tailnet).
+
 ## Tests
 
 ```bash
