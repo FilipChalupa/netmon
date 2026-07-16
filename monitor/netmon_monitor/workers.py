@@ -110,12 +110,25 @@ def heartbeat_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
         db.insert_uptime(time.time(), now_iso(), "ALIVE")
 
 
+def pubip_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
+    """Record the public IP only when it changes (ISP handover, CGNAT,
+    reconnect). last_pubip() seeds the comparison so restarts don't
+    duplicate; a failed check records nothing."""
+    last = db.last_pubip()
+    while not stop.is_set():  # first check right at startup
+        ip = probes.public_ip(cfg.pubip_url)
+        if ip and ip != last:
+            db.insert_pubip(time.time(), now_iso(), ip)
+            last = ip
+        stop.wait(cfg.pubip_interval)
+
+
 def purge_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
     while not stop.wait(86400):
         db.purge(cfg.retention_days)
 
 
-ALL_LOOPS = [ping_loop, reach_loop, speed_loop, heartbeat_loop, purge_loop]
+ALL_LOOPS = [ping_loop, reach_loop, speed_loop, heartbeat_loop, pubip_loop, purge_loop]
 
 
 def start_workers(cfg: Config, db: Db, stop: threading.Event) -> list[threading.Thread]:

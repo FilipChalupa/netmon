@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import socket
 import ssl
@@ -102,6 +103,21 @@ def reach_probe(url: str, total_timeout: float = 10.0):
                 sock.close()
             except OSError:
                 pass
+
+
+def public_ip(url: str, timeout: float = 10.0) -> str | None:
+    """The public IP as seen from outside (plain-text echo service).
+
+    Returns a normalized IP string, or None on any failure — the caller
+    records nothing in that case (an unknown IP is not a change).
+    """
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "netmon/2"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            text = resp.read(64).decode("ascii", "replace").strip()
+        return str(ipaddress.ip_address(text))
+    except (OSError, ValueError):
+        return None
 
 
 def adaptive_speed_bytes(measured_mbps: float, min_seconds: float,

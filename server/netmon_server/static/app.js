@@ -135,7 +135,7 @@ const overlaysPlugin = {
     for (const m of o.marks) {
       const px = epochToPx(xs, o.epochs, m.t);
       if (px == null || px < area.left - 1 || px > area.right + 1) continue;
-      ctx.strokeStyle = NOTE_COLOR;
+      ctx.strokeStyle = m.color || NOTE_COLOR;
       ctx.lineWidth = 1.2;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -145,7 +145,7 @@ const overlaysPlugin = {
       ctx.setLineDash([]);
       ctx.font = '11px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('📝', px, area.top - 3);
+      ctx.fillText(m.icon || '📝', px, area.top - 3);
       chart.$noteXs.push({px, note: m});
     }
     const h = chart.$noteHover;
@@ -157,7 +157,7 @@ const overlaysPlugin = {
       const x = Math.max(area.left, Math.min(h.px + 8, area.right - w));
       const y = area.top + 8;
       ctx.fillStyle = 'rgba(15,23,42,.95)';
-      ctx.strokeStyle = NOTE_COLOR;
+      ctx.strokeStyle = h.note.color || NOTE_COLOR;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(x, y, w, boxH, 6);
@@ -303,6 +303,17 @@ function renderCards(sum) {
         <div class="metric"><span>Running time</span><span class="v">${fmtDur(u.span_s - u.down_s)}</span></div>
         <div class="metric"><span>Downtime</span><span class="pill ${covCls}">${fmtDur(u.down_s)}</span></div>
         <div class="metric"><span>Interruptions</span><span class="v">${u.gaps.length}×</span></div>
+      </div>`);
+  }
+  const p = sum.pubip && sum.pubip.current;
+  if (p) {
+    el.insertAdjacentHTML('beforeend', `
+      <div class="card">
+        <h3>🌍 public IP</h3>
+        <div class="big" style="font-size:20px">${p.ip}</div>
+        <div class="metric"><span>ISP (rDNS)</span><span class="v" style="overflow-wrap:anywhere;text-align:right">${p.ptr || '—'}</span></div>
+        <div class="metric"><span>Since</span><span class="v">${fmtIso(p.since)}</span></div>
+        <div class="metric"><span>Changes in range</span><span class="v">${sum.pubip.changes.length}×</span></div>
       </div>`);
   }
 }
@@ -513,7 +524,12 @@ async function pageNetwork() {
   renderUptime(sum.uptime);
   renderEvents(sum.events);
   renderNotes(notes);
-  const marks = noteMarks(notes);
+  // public IP changes show as teal markers alongside the yellow note marks
+  const ipMarks = (sum.pubip ? sum.pubip.changes : []).map(c => ({
+    t: c.ts_epoch, text: 'Public IP → ' + c.ip, when: fmtTs(c.ts_epoch, true),
+    who: 'network', color: '#2dd4bf', icon: '🌍',
+  }));
+  const marks = noteMarks(notes).concat(ipMarks);
   const bands = sum.events.map(e => ({t0: e.start_epoch, t1: e.end_epoch, scope: e.scope}));
 
   const lat = series.latency;

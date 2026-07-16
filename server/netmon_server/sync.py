@@ -27,6 +27,7 @@ ROW_FIELDS = {
     "reach": ("dns_ms", "tcp_ms", "tls_ms", "http_code", "status"),
     "speed": ("down_mbps", "bytes", "seconds", "http_code"),
     "uptime": ("event",),
+    "pubip": ("ip",),
 }
 
 
@@ -70,6 +71,8 @@ async def pull_monitor(conn: sqlite3.Connection, client: httpx.AsyncClient,
                 params={"after_id": after_id, "limit": PAGE_LIMIT},
                 headers=_headers(mon),
             )
+            if resp.status_code == 404:
+                break  # monitor predating this data kind — skip, keep syncing the rest
             resp.raise_for_status()
             payload = resp.json()
             rows = payload.get("rows", [])

@@ -73,6 +73,17 @@ CREATE TABLE IF NOT EXISTS uptime(
 );
 CREATE INDEX IF NOT EXISTS idx_uptime_net_ts ON uptime(network_id, ts_epoch);
 
+CREATE TABLE IF NOT EXISTS pubip(
+    id INTEGER PRIMARY KEY,
+    network_id INTEGER NOT NULL REFERENCES networks(id),
+    src_id INTEGER,
+    ts_epoch REAL NOT NULL,
+    ts_iso TEXT,
+    ip TEXT NOT NULL,
+    UNIQUE(network_id, src_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pubip_net_ts ON pubip(network_id, ts_epoch);
+
 CREATE TABLE IF NOT EXISTS sync_cursor(
     network_id INTEGER NOT NULL,
     kind TEXT NOT NULL,
@@ -128,7 +139,7 @@ CREATE TABLE IF NOT EXISTS note_networks(
 );
 """
 
-KINDS = ("latency", "reach", "speed", "uptime")
+KINDS = ("latency", "reach", "speed", "uptime", "pubip")
 
 # columns inserted during sync/import (without id), in INSERT order
 KIND_INSERT_COLUMNS = {
@@ -136,6 +147,7 @@ KIND_INSERT_COLUMNS = {
     "reach": ["network_id", "src_id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],
     "speed": ["network_id", "src_id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code"],
     "uptime": ["network_id", "src_id", "ts_epoch", "ts_iso", "event"],
+    "pubip": ["network_id", "src_id", "ts_epoch", "ts_iso", "ip"],
 }
 
 

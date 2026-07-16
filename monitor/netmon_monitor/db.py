@@ -56,6 +56,14 @@ CREATE TABLE IF NOT EXISTS uptime(
     event TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_uptime_ts ON uptime(ts_epoch);
+
+CREATE TABLE IF NOT EXISTS pubip(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_epoch REAL NOT NULL,
+    ts_iso TEXT NOT NULL,
+    ip TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pubip_ts ON pubip(ts_epoch);
 """
 
 # columns returned by the API, in JSON row order
@@ -64,6 +72,7 @@ KIND_COLUMNS = {
     "reach": ["id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],
     "speed": ["id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code"],
     "uptime": ["id", "ts_epoch", "ts_iso", "event"],
+    "pubip": ["id", "ts_epoch", "ts_iso", "ip"],
 }
 
 
@@ -108,6 +117,19 @@ class Db:
             "INSERT INTO uptime(ts_epoch, ts_iso, event) VALUES(?,?,?)",
             (ts_epoch, ts_iso, event),
         )
+
+    def insert_pubip(self, ts_epoch, ts_iso, ip):
+        self._write(
+            "INSERT INTO pubip(ts_epoch, ts_iso, ip) VALUES(?,?,?)",
+            (ts_epoch, ts_iso, ip),
+        )
+
+    def last_pubip(self) -> str | None:
+        """Most recently recorded public IP (survives restarts)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT ip FROM pubip ORDER BY id DESC LIMIT 1").fetchone()
+        return row[0] if row else None
 
     def purge(self, retention_days: int) -> int:
         """Delete records older than retention_days. Returns deleted row count."""

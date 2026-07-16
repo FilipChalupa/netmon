@@ -67,6 +67,7 @@ def make_handler(cfg: Config, db_path: str, started_at: str):
                         "reach": cfg.reach_interval,
                         "speed": cfg.speed_interval,
                         "heartbeat": cfg.heartbeat_interval,
+                        "pubip": cfg.pubip_interval,
                     },
                 })
             elif path.startswith("/api/data/"):

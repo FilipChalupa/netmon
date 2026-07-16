@@ -58,6 +58,15 @@ def _net_text(label: str, s: dict, notes: list[dict] = ()) -> str:
     if sp["n"]:
         lines.append(f"Speed: {sp['n']} tests, avg {sp['avg']:.0f} Mbit/s "
                      f"(min {sp['min']:.0f} / max {sp['max']:.0f})")
+    pub = s.get("pubip") or {}
+    if pub.get("current"):
+        cur = pub["current"]
+        line = f"Public IP: {cur['ip']}"
+        if cur.get("ptr"):
+            line += f" ({cur['ptr']})"
+        if pub["changes"]:
+            line += f" · changed {len(pub['changes'])}× this day"
+        lines.append(line)
     u = s["uptime"]
     if u["coverage"] is not None:
         lines.append(f"Measurement coverage: {u['coverage']:.1f} % "
@@ -110,6 +119,16 @@ def _net_html(label: str, day: str, s: dict, notes: list[dict] = ()) -> str:
                   f"max {sp['max']:.0f})") if sp["n"] else "no measurements"
     coverage_line = (f"{u['coverage']:.1f} % (downtime {_fmt_dur(u['down_s'])})"
                      if u["coverage"] is not None else "—")
+    pub = s.get("pubip") or {}
+    pubip_line = ""
+    if pub.get("current"):
+        cur = pub["current"]
+        pubip_line = f"<p>{html.escape(cur['ip'])}"
+        if cur.get("ptr"):
+            pubip_line += f" · {html.escape(cur['ptr'])}"
+        if pub["changes"]:
+            pubip_line += f" · changed {len(pub['changes'])}× this day"
+        pubip_line = ('<h2 style="font-size:16px">Public IP</h2>' + pubip_line + "</p>")
 
     th = 'style="text-align:left;padding:6px 10px;border-bottom:1px solid #334155;color:#94a3b8"'
     table = 'style="width:100%;border-collapse:collapse;font-size:14px"'
@@ -132,6 +151,7 @@ def _net_html(label: str, day: str, s: dict, notes: list[dict] = ()) -> str:
 <table {table}><tr><th {th}>target</th><th {th}>samples</th><th {th}>loss</th>
 <th {th}>avg ms</th><th {th}>min</th><th {th}>max</th></tr>{rows}</table>
 <h2 style="font-size:16px">Speed</h2><p>{speed_line}</p>
+{pubip_line}
 <h2 style="font-size:16px">Measurement coverage</h2><p>{coverage_line}</p>
 <table {table}><tr><th {th}>from</th><th {th}>to</th><th {th}>duration</th><th {th}>cause</th></tr>{gap_rows}</table>
 <h2 style="font-size:16px">Outages</h2>

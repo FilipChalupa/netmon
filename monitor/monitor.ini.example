@@ -34,3 +34,6 @@ speed_min_seconds = 3
 speed_max_bytes = 200000000
 # Heartbeat into the uptime log (detects when measuring wasn't running).
 heartbeat_interval = 60
+# Public IP check (recorded only when the IP changes — ISP handover, reconnect).
+pubip_interval = 900
+pubip_url = https://api.ipify.org

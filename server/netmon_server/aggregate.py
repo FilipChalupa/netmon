@@ -7,7 +7,10 @@ like the old version; longer ranges thin themselves out).
 
 from __future__ import annotations
 
+import concurrent.futures
 import datetime
+import functools
+import socket
 import sqlite3
 from zoneinfo import ZoneInfo
 
@@ -92,6 +95,49 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
         "ts": [r["ts_epoch"] for r in rows],
         "mbps": [r["down_mbps"] for r in rows],
         "fails": fails,
+    }
+
+
+_ptr_pool = concurrent.futures.ThreadPoolExecutor(2, thread_name_prefix="ptr")
+
+
+@functools.lru_cache(maxsize=256)
+def _ptr(ip: str) -> str | None:
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except OSError:
+        return None
+
+
+def ptr_lookup(ip: str, timeout: float = 1.5) -> str | None:
+    """Reverse DNS of the public IP — usually names the ISP. Bounded wait so
+    a dead resolver can't stall page rendering; results are cached."""
+    try:
+        return _ptr_pool.submit(_ptr, ip).result(timeout)
+    except concurrent.futures.TimeoutError:
+        return None
+
+
+def pubip_history(conn: sqlite3.Connection, network_id: int,
+                  t0: float, t1: float) -> dict:
+    """Public IP effective at t1 + change records within [t0, t1]."""
+    cur = conn.execute(
+        "SELECT ts_epoch, ts_iso, ip FROM pubip "
+        "WHERE network_id=? AND ts_epoch<=? ORDER BY ts_epoch DESC LIMIT 1",
+        (network_id, t1)).fetchone()
+    changes = conn.execute(
+        "SELECT ts_epoch, ts_iso, ip FROM pubip "
+        "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
+        (network_id, t0, t1)).fetchall()
+    return {
+        "current": {
+            "ip": cur["ip"],
+            "since": cur["ts_iso"],
+            "since_epoch": cur["ts_epoch"],
+            "ptr": ptr_lookup(cur["ip"]),
+        } if cur else None,
+        "changes": [{"ts_epoch": r["ts_epoch"], "ts_iso": r["ts_iso"],
+                     "ip": r["ip"]} for r in changes],
     }
 
 
@@ -224,6 +270,7 @@ def summary(conn: sqlite3.Connection, network_id: int,
             "last_at": last_spd["ts_iso"] if last_spd else None,
         },
         "uptime": uptime_panel(conn, network_id, t0, t1),
+        "pubip": pubip_history(conn, network_id, t0, t1),
         "events": [e.as_dict() for e in events],
         "events_summary": events_summary(events),
         "period": {"first": meta["first_iso"], "last": meta["last_iso"]},

@@ -191,6 +191,7 @@ Disable with `NETMON_ALERTS=0`.
 | reach — DNS/TCP/TLS against `generate_204` | 30 s | "ping works but the internet doesn't" (DNS, dropped traffic) |
 | speed — 50 MB download from Cloudflare | 1 h | speed variation (peak vs. night) |
 | heartbeat | 60 s | when measuring wasn't running at all (coverage, crash vs. controlled stop) |
+| public IP (api.ipify.org, stored only on change) | 15 min | ISP identification via rDNS; IP changes often coincide with outages |
 
 **Outages** are derived from pings: `local` = gateway unreachable (problem
 on your side), `internet` = gateway OK but **both** public targets down in

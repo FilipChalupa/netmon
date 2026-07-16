@@ -36,6 +36,9 @@ class Config:
     speed_min_seconds: float = 3.0
     speed_max_bytes: int = 200_000_000
     heartbeat_interval: float = 60.0
+    # public IP is checked often but recorded only when it changes
+    pubip_interval: float = 900.0
+    pubip_url: str = "https://api.ipify.org"
 
     def resolved_db_path(self) -> str:
         return os.path.expanduser(self.db_path)
@@ -88,4 +91,6 @@ def load_config(path: str) -> Config:
     cfg.speed_min_seconds = float(p.get("speed_min_seconds", cfg.speed_min_seconds))
     cfg.speed_max_bytes = int(p.get("speed_max_bytes", cfg.speed_max_bytes))
     cfg.heartbeat_interval = float(p.get("heartbeat_interval", cfg.heartbeat_interval))
+    cfg.pubip_interval = float(p.get("pubip_interval", cfg.pubip_interval))
+    cfg.pubip_url = p.get("pubip_url", cfg.pubip_url).strip()
     return cfg

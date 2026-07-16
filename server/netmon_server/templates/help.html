@@ -85,6 +85,16 @@ Intervals and targets below are the defaults — every monitor can override them
 </div>
 
 <div class="panel">
+  <h2>🌍 Public IP</h2>
+  <p>Every <b>15&nbsp;min</b> the monitor asks a plain-text echo service
+  (<code>api.ipify.org</code>) what IP it appears from, and records it <b>only when it
+  changes</b> — an ISP handover, a reconnect after an outage, or a CGNAT move. The network
+  page shows the current IP with its reverse-DNS name (which usually reveals the ISP),
+  and each change appears as a teal 🌍 marker in the charts, so it's easy to see whether
+  an outage coincided with getting a new address.</p>
+</div>
+
+<div class="panel">
   <h2>💓 Heartbeat &amp; measurement coverage</h2>
   <p>Every <b>60&nbsp;s</b> the monitor writes a heartbeat; on a clean shutdown it writes a
   final <code>STOP</code>. A gap longer than <b>150&nbsp;s</b> between heartbeats means the
