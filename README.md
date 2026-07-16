@@ -203,6 +203,15 @@ computed from the monitor's heartbeats, which arrive complete once the
 connection returns (heartbeat gap > 150 s = not measuring; `STOP` before
 the gap = controlled shutdown, otherwise a crash).
 
+**Notes**: the network page has a notes panel — text + time, scoped to
+selected networks or general (none selected = applies to all). Notes show
+as dashed markers with hover tooltips in all charts (network detail and
+comparison), are listed in the daily email report, and clicking a chart
+prefills the note form with the clicked moment. Derived outages are also
+shaded directly in the charts (red = local, amber = internet), and a
+GitHub-style calendar heatmap at the bottom of the network page shows a
+year of daily internet loss — click a day to open it.
+
 ## API
 
 Monitor (`:8787`, `X-Netmon-Token` header):
@@ -211,7 +220,9 @@ Monitor (`:8787`, `X-Netmon-Token` header):
 
 Server (`:8000`): `GET /` dashboard · `GET /net/{name}?range=day|week|all&date=…`
 · `GET /compare?nets=a,b` · JSON: `/api/networks`,
-`/api/net/{name}/{summary|series|events}?t0=…&t1=…`, `/api/health`
+`/api/net/{name}/{summary|series|events}?t0=…&t1=…`,
+`/api/net/{name}/heatmap?days=365`, `/api/health`, notes:
+`GET /api/notes?t0=…&t1=…&nets=a,b` · `POST /api/notes` · `DELETE /api/notes/{id}`
 
 ## Tests
 
@@ -222,7 +233,9 @@ python -m pytest tests/
 
 They cover outage derivation (including **parity with the original
 `events.sh`** on the same fixture), import idempotency, incremental sync
-with cursors and token auth, and alerting (thresholds, dedup, recovery).
+with cursors and token auth, alerting (thresholds, dedup, recovery),
+notes (scoping, report inclusion, schema migration) and the heatmap's
+per-local-day aggregation.
 
 ## TODO / ideas
 
