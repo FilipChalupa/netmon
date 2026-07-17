@@ -78,13 +78,24 @@ def _parse_rtt(out: str, system: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+# set on the first IcmpSendEcho failure: from then on this process pings via
+# subprocess ping.exe instead of retrying a crashing API every round
+_win_icmp_broken = False
+
+
 def _ping_windows_icmp(ip: str, timeout: float):
     """IPv4 ping via iphlpapi.IcmpSendEcho.
 
     Returns ("ok", rtt_ms), ("LOSS", None), or None when the API is
-    unavailable (caller falls back to subprocess ping).
+    unavailable (caller falls back to subprocess ping). Prototypes must be
+    declared explicitly — the ctypes defaults truncate the 64-bit HANDLE
+    to int, which crashes with an access violation.
     """
+    global _win_icmp_broken
+    if _win_icmp_broken:
+        return None
     import ctypes
+    import ctypes.wintypes as wt
 
     class IP_OPTION_INFORMATION(ctypes.Structure):
         _fields_ = [("Ttl", ctypes.c_ubyte), ("Tos", ctypes.c_ubyte),
@@ -97,28 +108,44 @@ def _ping_windows_icmp(ip: str, timeout: float):
                     ("Reserved", ctypes.c_ushort), ("Data", ctypes.c_void_p),
                     ("Options", IP_OPTION_INFORMATION)]
 
+    INVALID_HANDLE = wt.HANDLE(-1).value
     try:
         iphlpapi = ctypes.windll.iphlpapi
+        create = iphlpapi.IcmpCreateFile
+        create.restype = wt.HANDLE
+        create.argtypes = []
+        close = iphlpapi.IcmpCloseHandle
+        close.restype = wt.BOOL
+        close.argtypes = [wt.HANDLE]
+        send = iphlpapi.IcmpSendEcho
+        send.restype = wt.DWORD
+        send.argtypes = [wt.HANDLE, ctypes.c_uint32, ctypes.c_char_p, wt.WORD,
+                         ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, wt.DWORD]
+
         addr = int.from_bytes(socket.inet_aton(ip), "little")
-    except (AttributeError, OSError):
+        handle = create()
+        if not handle or handle == INVALID_HANDLE:
+            _win_icmp_broken = True
+            return None
+        try:
+            payload = b"netmon-ping"
+            buf_size = ctypes.sizeof(ICMP_ECHO_REPLY) + len(payload) + 8
+            buf = ctypes.create_string_buffer(buf_size)
+            n = send(handle, addr, payload, len(payload), None,
+                     buf, buf_size, int(timeout * 1000))
+            if n == 0:
+                return "LOSS", None
+            reply = ctypes.cast(buf, ctypes.POINTER(ICMP_ECHO_REPLY)).contents
+            if reply.Status != 0:  # 0 = IP_SUCCESS; anything else = no usable reply
+                return "LOSS", None
+            return "ok", float(reply.RoundTripTime)
+        finally:
+            close(handle)
+    except (AttributeError, OSError, ValueError):
+        # windll missing (non-Windows), API crash, bad address — never let the
+        # ping loop die; the subprocess fallback takes over permanently
+        _win_icmp_broken = True
         return None
-    handle = iphlpapi.IcmpCreateFile()
-    if handle in (0, -1):
-        return None
-    try:
-        payload = b"netmon-ping"
-        buf_size = ctypes.sizeof(ICMP_ECHO_REPLY) + len(payload) + 8
-        buf = ctypes.create_string_buffer(buf_size)
-        n = iphlpapi.IcmpSendEcho(handle, addr, payload, len(payload), None,
-                                  buf, buf_size, int(timeout * 1000))
-        if n == 0:
-            return "LOSS", None
-        reply = ctypes.cast(buf, ctypes.POINTER(ICMP_ECHO_REPLY)).contents
-        if reply.Status != 0:  # 0 = IP_SUCCESS; anything else = no usable reply
-            return "LOSS", None
-        return "ok", float(reply.RoundTripTime)
-    finally:
-        iphlpapi.IcmpCloseHandle(handle)
 
 
 def ping_target(ip: str, timeout: float, system: str = _SYSTEM) -> tuple[str, float | None]:

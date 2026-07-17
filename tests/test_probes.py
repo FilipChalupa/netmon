@@ -1,6 +1,7 @@
 """Cross-platform probe helpers: gateway parsing, ping commands, RTT parsing."""
 
-from netmon_monitor.probes import _parse_gateway, _parse_rtt, _ping_cmd
+from netmon_monitor import probes
+from netmon_monitor.probes import _parse_gateway, _parse_rtt, _ping_cmd, _ping_windows_icmp
 
 LINUX_ROUTE = "default via 192.168.1.1 dev eth0 proto dhcp metric 100\n"
 
@@ -53,6 +54,15 @@ def test_parse_rtt_unix():
     out = "64 bytes from 9.9.9.9: icmp_seq=1 ttl=58 time=12.3 ms\n"
     assert _parse_rtt(out, "Linux") == 12.3
     assert _parse_rtt("no reply", "Linux") is None
+
+
+def test_windows_icmp_falls_back_gracefully(monkeypatch):
+    """Anywhere the Icmp API is unusable it must return None (→ subprocess
+    fallback) and disable itself instead of crashing the ping loop."""
+    monkeypatch.setattr(probes, "_win_icmp_broken", False)
+    assert _ping_windows_icmp("9.9.9.9", 2.0) is None   # no windll off Windows
+    assert probes._win_icmp_broken is True
+    assert _ping_windows_icmp("9.9.9.9", 2.0) is None   # stays disabled
 
 
 def test_parse_rtt_windows_including_localized():
