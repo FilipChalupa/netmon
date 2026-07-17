@@ -49,6 +49,7 @@ jobs:
           --collect-submodules netmon_server
           --collect-submodules netmon_monitor
           --collect-submodules uvicorn
+          --collect-all tzdata
           --exclude-module mcp.cli
           --exclude-module pkg_resources
           --hidden-import anyio._backends._asyncio
