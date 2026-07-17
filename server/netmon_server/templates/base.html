@@ -85,7 +85,9 @@
     <a class="item {% if request.url.path == '/net/' + n.name %}active{% endif %}"
        href="/net/{{ n.name }}">{{ n.label }}</a>
   {% endfor %}
+  {% if (networks | default([])) | length > 1 %}
   <a class="item {% if request.url.path == '/compare' %}active{% endif %}" href="/compare">Compare</a>
+  {% endif %}
   <a class="item {% if request.url.path == '/help' %}active{% endif %}" href="/help">How it works</a>
 </nav>
 {% block content %}{% endblock %}
