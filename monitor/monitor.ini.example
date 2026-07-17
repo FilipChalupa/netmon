@@ -37,3 +37,8 @@ heartbeat_interval = 60
 # Public IP check (recorded only when the IP changes — ISP handover, reconnect).
 pubip_interval = 900
 pubip_url = https://api.ipify.org
+# Traceroute snapshot captured while an internet outage is happening
+# (shown expandable next to the outage in the web UI).
+diag_enabled = 1
+diag_min_rounds = 3
+diag_cooldown = 600

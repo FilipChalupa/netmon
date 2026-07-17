@@ -193,6 +193,9 @@ batch of events is grouped into a single email):
   failures (default 10 ≈ 5 min): "pings work but the internet doesn't"
   (broken DNS, filtered traffic). Suppressed while a ping-derived outage
   overlaps, so a hard outage sends a single email.
+- **Speed degradation** — the median of the recent tests (6 h) drops below
+  `NETMON_ALERT_SPEED_PCT` % (default 50, 0 disables) of the 30-day
+  baseline median; a recovery email follows once it's back.
 - **Monitor unreachable** — sync has been failing for
   `NETMON_ALERT_OFFLINE_S` (default 600 s); a recovery email follows when it
   comes back. Note this only delays outage alerts: the monitor keeps

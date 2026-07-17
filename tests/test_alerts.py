@@ -150,3 +150,50 @@ def test_imported_only_network_never_offline(conn, cfg, sent):
                  (nid, time.time() - 9999))
     conn.commit()
     assert alerts.check_once(conn, cfg, time.time()) == []
+
+
+def _speed_tests(conn, nid, t0, count, mbps, step=3600):
+    for i in range(count):
+        conn.execute(
+            "INSERT INTO speed(network_id, ts_epoch, ts_iso, down_mbps) VALUES(?,?,?,?)",
+            (nid, t0 + i * step, "", mbps))
+    conn.commit()
+
+
+def test_speed_degradation_alert_recovery_and_rearm(conn, cfg, sent):
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 40 * 3600, 30, 500.0)   # baseline ~500 Mbit/s
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 100.0)     # recent median 100 → 20 %
+
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1 and "speed degraded" in subjects[0]
+    assert "20% of usual" in subjects[0]
+
+    # dedup: still degraded, no second email
+    assert alerts.check_once(conn, cfg, now) == []
+
+    # recovery: fresh fast tests lift the recent median above the threshold
+    _speed_tests(conn, nid, now - 1500, 5, 480.0, step=300)
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1 and "back to normal" in subjects[0]
+
+    # re-armed and healthy → quiet
+    assert alerts.check_once(conn, cfg, now) == []
+
+
+def test_speed_alert_needs_baseline(conn, cfg, sent):
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 10.0)      # slow, but no baseline
+    assert alerts.check_once(conn, cfg, now) == []
+
+
+def test_speed_alert_disabled_by_zero_pct(conn, sent):
+    cfg = ServerConfig(monitors=[MonitorCfg(name="testnet", url="http://x")],
+                       alert_speed_pct=0)
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 40 * 3600, 30, 500.0)
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 50.0)
+    assert alerts.check_once(conn, cfg, now) == []

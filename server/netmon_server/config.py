@@ -41,6 +41,12 @@ class ServerConfig:
     alert_reach_fails: int = 10       # consecutive reach FAILs (~5 min at 30 s) to alert
     alert_interval: float = 60.0      # how often the alert loop checks
     alert_lookback_s: int = 7200      # how far back to look for outage events
+    # speed degradation: recent median below this % of the 30-day baseline
+    # median → alert; recovery above +20 points (capped 90 %). 0 disables.
+    alert_speed_pct: int = 50
+    alert_speed_window_s: int = 6 * 3600   # "recent" = tests in this window
+    alert_speed_min_tests: int = 3         # need at least this many recent tests
+    alert_speed_min_baseline: int = 24     # and this many baseline tests (~1 day)
 
 
 # single-mode (all-in-one binary) injects its config here instead of env/toml
@@ -67,6 +73,8 @@ def load_config() -> ServerConfig:
                                            ServerConfig.alert_offline_s)),
         alert_reach_fails=int(os.environ.get("NETMON_ALERT_REACH_FAILS",
                                              ServerConfig.alert_reach_fails)),
+        alert_speed_pct=int(os.environ.get("NETMON_ALERT_SPEED_PCT",
+                                           ServerConfig.alert_speed_pct)),
     )
     if os.path.exists(cfg.monitors_path):
         with open(cfg.monitors_path, "rb") as f:

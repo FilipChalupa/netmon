@@ -43,6 +43,11 @@ Intervals and targets below are the defaults — every monitor can override them
   <p>Consecutive bad rounds of the same kind merge into one event; a gap longer than
   2.5× the ping interval splits it (so time when the monitor itself wasn't running never
   bridges two outages). The minimum reported duration is one ping interval.</p>
+  <p><b>Route snapshot:</b> while an internet outage is happening, the monitor runs one
+  traceroute per public target and stores the output. It shows up as an expandable
+  “route snapshot” under the outage — evidence of <i>where</i> the path broke (your
+  router, the ISP's first hop, or further out) that can't be reconstructed after the
+  line recovers. At most one snapshot per 10 minutes.</p>
 </div>
 
 <div class="panel">

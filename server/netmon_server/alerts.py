@@ -15,6 +15,10 @@ variables as daily reports; without SMTP configured it stays idle.
   (default 10 ≈ 5 min) → "pings work but the internet doesn't" (DNS or
   filtered traffic). Suppressed when a ping-derived outage overlaps the
   run, so a hard outage doesn't send two emails.
+- Speed degradation: median of the recent tests (6 h window) below
+  NETMON_ALERT_SPEED_PCT % (default 50) of the 30-day baseline median →
+  one email; recovery (median back above threshold+20 points) sends a
+  follow-up and re-arms. 0 disables.
 
 Note: a monitor being offline usually just delays outage alerts — the
 monitor keeps measuring locally and events are derived after backfill.
@@ -135,6 +139,61 @@ def _check_reach(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float,
     return sent
 
 
+def _median(vals: list[float]) -> float:
+    s = sorted(vals)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _check_speed(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float) -> list[str]:
+    """Sustained download-speed degradation against the 30-day baseline.
+
+    Medians on both sides keep single bad tests (or a single lucky one)
+    from flipping the state; recovery needs +20 points of headroom so a
+    line hovering at the threshold doesn't flap emails."""
+    if not cfg.alert_speed_pct:
+        return []
+    recent = [r["down_mbps"] for r in conn.execute(
+        "SELECT down_mbps FROM speed WHERE network_id=? AND ts_epoch>? "
+        "AND down_mbps IS NOT NULL",
+        (net["id"], now - cfg.alert_speed_window_s))]
+    baseline = [r["down_mbps"] for r in conn.execute(
+        "SELECT down_mbps FROM speed WHERE network_id=? AND ts_epoch BETWEEN ? AND ? "
+        "AND down_mbps IS NOT NULL",
+        (net["id"], now - 30 * 86400, now - cfg.alert_speed_window_s))]
+    if len(recent) < cfg.alert_speed_min_tests or \
+            len(baseline) < cfg.alert_speed_min_baseline:
+        return []
+
+    cur, base = _median(recent), _median(baseline)
+    pct = cur / base * 100 if base > 0 else 100.0
+    degraded = pct < cfg.alert_speed_pct
+    recovered = pct >= min(cfg.alert_speed_pct + 20, 90)
+    alerted = _already_sent(conn, net["id"], "speed", "state")
+    sent = []
+    if degraded and not alerted:
+        subject = (f"netmon ALERT: download speed degraded on {net['label']} "
+                   f"({cur:.0f} Mbit/s, {pct:.0f}% of usual)")
+        body = (f"Network: {net['label']} ({net['name']})\n\n"
+                f"Median of the last {len(recent)} speed tests: {cur:.0f} Mbit/s\n"
+                f"30-day baseline median: {base:.0f} Mbit/s\n"
+                f"That is {pct:.0f}% of the usual speed "
+                f"(alert threshold {cfg.alert_speed_pct}%).\n\n"
+                f"A recovery email follows once the speed is back.")
+        if send_email(subject, body):
+            _mark_sent(conn, net["id"], "speed", "state")
+            sent.append(subject)
+    elif alerted and recovered:
+        subject = (f"netmon: download speed on {net['label']} back to normal "
+                   f"({cur:.0f} Mbit/s)")
+        if send_email(subject, f"Median of the last {len(recent)} tests is "
+                               f"{cur:.0f} Mbit/s ({pct:.0f}% of the 30-day "
+                               f"baseline {base:.0f} Mbit/s)."):
+            _clear_sent(conn, net["id"], "speed", "state")
+            sent.append(subject)
+    return sent
+
+
 def _check_offline(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float) -> list[str]:
     if not any(m.name == net["name"] for m in cfg.monitors):
         return []  # imported-only network, nothing to be offline
@@ -175,6 +234,7 @@ def check_once(conn: sqlite3.Connection, cfg: ServerConfig,
                                    now, cfg.ping_interval)
             sent += _check_outages(conn, cfg, net, now, events)
             sent += _check_reach(conn, cfg, net, now, events)
+            sent += _check_speed(conn, cfg, net, now)
             sent += _check_offline(conn, cfg, net, now)
         except Exception:
             log.exception("alert check failed for %s", net["name"])
