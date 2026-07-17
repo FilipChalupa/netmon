@@ -372,6 +372,43 @@ function renderEvents(events) {
     `<th style="text-align:right">duration</th><th>scope</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/* ---------- shared time grid ----------
+   Each chart used to span only its own data, so charts on one page ended at
+   different times (hourly speed vs. per-minute latency). All charts of a page
+   now share one uniform bucket grid covering the union of their data. */
+
+function bucketGrid(bucket, bucketLists, rawTs) {
+  let min = Infinity, max = -Infinity;
+  bucketLists.forEach(list => {
+    if (list.length) {
+      min = Math.min(min, list[0]);
+      max = Math.max(max, list[list.length - 1]);
+    }
+  });
+  (rawTs || []).forEach(t => {
+    const q = Math.round(t / bucket) * bucket;
+    min = Math.min(min, q);
+    max = Math.max(max, q);
+  });
+  if (!isFinite(min)) return [];
+  const grid = [];
+  for (let t = min; t <= max; t += bucket) grid.push(t);
+  return grid;
+}
+
+/* Values re-indexed onto the grid; buckets outside it are dropped. */
+function onGrid(grid, bucket, buckets, values) {
+  const out = new Array(grid.length).fill(null);
+  if (!grid.length) return out;
+  buckets.forEach((b, j) => {
+    const i = Math.round((b - grid[0]) / bucket);
+    if (i >= 0 && i < out.length && values[j] != null) out[i] = values[j];
+  });
+  return out;
+}
+
+const quantize = (ts, bucket) => ts.map(t => Math.round(t / bucket) * bucket);
+
 /* ---------- notes panel ---------- */
 
 function renderNotes(notes) {
@@ -532,31 +569,40 @@ async function pageNetwork() {
   const marks = noteMarks(notes).concat(ipMarks);
   const bands = sum.events.map(e => ({t0: e.start_epoch, t1: e.end_epoch, scope: e.scope}));
 
-  const lat = series.latency;
-  const labels = lat.buckets.map(b => fmtTs(b, longRange));
+  const lat = series.latency, rch = series.reach, spd = series.speed;
+  const bucket = series.bucket;
+  const grid = bucketGrid(bucket, [lat.buckets, rch.buckets], spd.ts);
+  const labels = grid.map(b => fmtTs(b, longRange));
+  const overlays = {epochs: grid, marks, bands};
+
   const targetNames = Object.keys(lat.targets).sort();
   lineChart('latChart', labels, targetNames.map((t, i) => ({
-    label: t, data: lat.targets[t].rtt, borderColor: colorForTarget(t, i),
+    label: t, data: onGrid(grid, bucket, lat.buckets, lat.targets[t].rtt),
+    borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25,
-  })), 'ms', {epochs: lat.buckets, marks, bands});
+  })), 'ms', overlays);
   lineChart('lossChart', labels, targetNames.map((t, i) => ({
-    label: t, data: lat.targets[t].loss, borderColor: colorForTarget(t, i),
+    label: t, data: onGrid(grid, bucket, lat.buckets, lat.targets[t].loss),
+    borderColor: colorForTarget(t, i),
     backgroundColor: colorForTarget(t, i), borderWidth: 1.6, tension: .25, fill: false,
-  })), '% loss', {epochs: lat.buckets, marks, bands});
+  })), '% loss', overlays);
 
-  const rch = series.reach;
-  lineChart('rchChart', rch.buckets.map(b => fmtTs(b, longRange)), [
-    {label: 'DNS', data: rch.dns, borderColor: '#34d399', backgroundColor: '#34d399', borderWidth: 1.6, tension: .25},
-    {label: 'TCP', data: rch.tcp, borderColor: '#fbbf24', backgroundColor: '#fbbf24', borderWidth: 1.6, tension: .25},
-    {label: 'TLS', data: rch.tls, borderColor: '#fb7185', backgroundColor: '#fb7185', borderWidth: 1.6, tension: .25},
-  ], 'ms', {epochs: rch.buckets, marks, bands});
+  const rchDs = (label, data, color) => ({
+    label, data: onGrid(grid, bucket, rch.buckets, data),
+    borderColor: color, backgroundColor: color, borderWidth: 1.6, tension: .25,
+  });
+  lineChart('rchChart', labels, [
+    rchDs('DNS', rch.dns, '#34d399'),
+    rchDs('TCP', rch.tcp, '#fbbf24'),
+    rchDs('TLS', rch.tls, '#fb7185'),
+  ], 'ms', overlays);
 
-  const spd = series.speed;
-  lineChart('spdChart', spd.ts.map(t => fmtTs(t, longRange)), [{
-    label: 'download', data: spd.mbps, borderColor: '#38bdf8',
+  lineChart('spdChart', labels, [{
+    label: 'download', data: onGrid(grid, bucket, quantize(spd.ts, bucket), spd.mbps),
+    borderColor: '#38bdf8',
     backgroundColor: 'rgba(56,189,248,.15)', borderWidth: 2, tension: .3,
-    fill: true, pointRadius: 3,
-  }], 'Mbit/s', {epochs: spd.ts, marks});
+    fill: true, pointRadius: 3, spanGaps: true,
+  }], 'Mbit/s', overlays);
 
   // the year heatmap aggregates a lot of history — load it once, after the charts
   if (!window.$heatmapLoaded) {
@@ -626,21 +672,21 @@ async function pageCompare() {
   ]);
   const marks = noteMarks(notes);
 
-  const bucketSet = new Set();
-  series.forEach(s => s && s.latency.buckets.forEach(b => bucketSet.add(b)));
-  const buckets = [...bucketSet].sort((a, b) => a - b);
-  const idx = new Map(buckets.map((b, i) => [b, i]));
-  const labels = buckets.map(b => fmtTs(b, longRange));
+  const live = series.filter(Boolean);
+  const bucket = live.length ? live[0].bucket : 60;
+  const grid = bucketGrid(bucket, live.map(s => s.latency.buckets),
+                          live.flatMap(s => s.speed.ts));
+  const labels = grid.map(b => fmtTs(b, longRange));
+  const overlays = {epochs: grid, marks};
 
   const mkSeries = (s, pick) => {
-    const out = new Array(buckets.length).fill(null);
-    s.latency.buckets.forEach((b, j) => {
-      const vals = PUBLIC_TARGETS
+    const vals = s.latency.buckets.map((_, j) => {
+      const vs = PUBLIC_TARGETS
         .map(t => s.latency.targets[t]).filter(Boolean)
         .map(t => pick(t)[j]).filter(v => v != null);
-      if (vals.length) out[idx.get(b)] = vals.reduce((a, v) => a + v, 0) / vals.length;
+      return vs.length ? vs.reduce((a, v) => a + v, 0) / vs.length : null;
     });
-    return out;
+    return onGrid(grid, bucket, s.latency.buckets, vals);
   };
 
   const netLabel = n => (window.PAGE.labels || {})[n] || n;
@@ -649,22 +695,17 @@ async function pageCompare() {
     backgroundColor: colorForNet(i), borderWidth: 1.8, tension: .25,
   })).filter(Boolean);
 
-  lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms', {epochs: buckets, marks});
-  lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss', {epochs: buckets, marks});
-
-  // speed: unified axis from raw points
-  const spdTs = new Set();
-  series.forEach(s => s && s.speed.ts.forEach(t => spdTs.add(t)));
-  const spdAxis = [...spdTs].sort((a, b) => a - b);
-  const spdIdx = new Map(spdAxis.map((t, i) => [t, i]));
-  lineChart('cmpSpd', spdAxis.map(t => fmtTs(t, longRange)),
+  lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms', overlays);
+  lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss', overlays);
+  lineChart('cmpSpd', labels,
     nets.map((n, i) => {
-      if (!series[i]) return null;
-      const data = new Array(spdAxis.length).fill(null);
-      series[i].speed.ts.forEach((t, j) => data[spdIdx.get(t)] = series[i].speed.mbps[j]);
-      return {label: netLabel(n), data, borderColor: colorForNet(i), backgroundColor: colorForNet(i),
+      const s = series[i];
+      if (!s) return null;
+      return {label: netLabel(n),
+              data: onGrid(grid, bucket, quantize(s.speed.ts, bucket), s.speed.mbps),
+              borderColor: colorForNet(i), backgroundColor: colorForNet(i),
               borderWidth: 2, tension: .3, pointRadius: 3, spanGaps: true};
-    }).filter(Boolean), 'Mbit/s', {epochs: spdAxis, marks});
+    }).filter(Boolean), 'Mbit/s', overlays);
 }
 
 /* Views whose range ends "now" quietly re-fetch every minute while visible,
