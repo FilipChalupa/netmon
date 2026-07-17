@@ -16,11 +16,11 @@ from __future__ import annotations
 import argparse
 import os
 import signal
+import socket
 import sys
 import threading
 import time
 
-from netmon_monitor import VERSION as MONITOR_VERSION
 from netmon_monitor.config import Config as MonitorConfig
 from netmon_monitor.config import load_config as load_monitor_config
 from netmon_monitor.db import Db
@@ -31,6 +31,45 @@ from . import VERSION
 from .config import MonitorCfg, ServerConfig, set_config_override
 
 DEFAULT_DATA_DIR = "~/.local/share/netmon"
+
+
+def _lan_ip() -> str | None:
+    """This machine's LAN address (no packets sent — connect() on UDP just
+    picks the outgoing interface)."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("9.9.9.9", 53))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
+        return None
+
+
+def _print_banner(mcfg: MonitorConfig, host: str, port: int, data_dir: str) -> None:
+    """Make it obvious where the web UI lives — this is the first thing a
+    binary user sees, ASCII only so localized Windows consoles cope."""
+    urls = [f"http://localhost:{port}"]
+    if host not in ("127.0.0.1", "localhost"):
+        lan = _lan_ip()
+        if lan:
+            urls.append(f"http://{lan}:{port}   <- other devices on your network")
+    line = "=" * 64
+    print(line)
+    print(f"  netmon v{VERSION} - measuring network '{mcfg.network}'")
+    print()
+    print(f"  Open the web UI in your browser:")
+    for u in urls:
+        print(f"      {u}")
+    print()
+    print(f"  Data directory:  {data_dir}")
+    print(f"  Monitor API:     port {mcfg.port} (for a central netmon server)")
+    print(f"  Stop:            Ctrl+C")
+    print()
+    print("  Charts fill in as measurements arrive; the first speed test")
+    print("  runs right away, then hourly.")
+    print(line, flush=True)
 
 
 def build_server_config(mcfg: MonitorConfig, data_dir: str, tz: str) -> ServerConfig:
@@ -87,10 +126,7 @@ def main(argv: list[str] | None = None) -> int:
                      daemon=True).start()
     threads = start_workers(mcfg, db, stop)
 
-    print(f"netmon single v{VERSION} (monitor v{MONITOR_VERSION}) — network "
-          f"'{mcfg.network}', data in {data_dir}", flush=True)
-    print(f"web UI: http://{args.host}:{args.port}  ·  monitor API: "
-          f":{mcfg.port}", flush=True)
+    _print_banner(mcfg, args.host, args.port, data_dir)
 
     # --- server half: uvicorn owns the main thread and the signals; when it
     # returns (SIGINT/SIGTERM), shut the monitor down cleanly ---
@@ -100,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: None)
     try:
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        # warning level keeps the banner above from scrolling away
+        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     finally:
         stop.set()
         httpd.shutdown()
