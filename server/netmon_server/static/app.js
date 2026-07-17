@@ -105,12 +105,14 @@ const overlaysPlugin = {
   afterEvent(chart, args) {
     const marks = chart.$noteXs;
     if (!marks || !marks.length) return;
+    // track the stable mark object from options — $noteXs entries are
+    // rebuilt on every draw, so their identity can't survive a redraw
     let hover = null;
     if (args.event.type === 'mousemove' && args.inChartArea) {
       let best = 9;
       for (const m of marks) {
         const d = Math.abs(args.event.x - m.px);
-        if (d < best) { best = d; hover = m; }
+        if (d < best) { best = d; hover = m.note; }
       }
     }
     if (hover !== chart.$noteHover) { chart.$noteHover = hover; args.changed = true; }
@@ -148,8 +150,8 @@ const overlaysPlugin = {
       ctx.fillText(m.icon || '📝', px, area.top - 3);
       chart.$noteXs.push({px, note: m});
     }
-    const h = chart.$noteHover;
-    if (h && chart.$noteXs.includes(h)) {
+    const h = chart.$noteXs.find(m => m.note === chart.$noteHover);
+    if (h) {
       ctx.font = '12px system-ui, sans-serif';
       const lines = [h.note.when + ' · ' + h.note.who, ...wrapText(ctx, h.note.text, 260)];
       const w = Math.min(280, Math.max(...lines.map(l => ctx.measureText(l).width)) + 20);
