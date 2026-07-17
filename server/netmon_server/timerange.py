@@ -7,6 +7,16 @@ import time
 from zoneinfo import ZoneInfo
 
 
+# day-of-month without leading zero, portably: strftime's %-d is a glibc
+# extension and raises "Invalid format string" on Windows
+def _md(d) -> str:
+    return f"{d:%b} {d.day}"
+
+
+def _mdy(d) -> str:
+    return f"{_md(d)}, {d.year}"
+
+
 def resolve_range(range_: str, date_: str | None, tz_name: str) -> tuple[float, float, str]:
     """Returns (t0, t1, period label). date_ = YYYY-MM-DD (day/week only)."""
     tz = ZoneInfo(tz_name)
@@ -30,13 +40,13 @@ def resolve_range(range_: str, date_: str | None, tz_name: str) -> tuple[float, 
                                           datetime.time.min, tz)
         end = datetime.datetime.combine(day + datetime.timedelta(days=1),
                                         datetime.time.min, tz)
-        label = f"{start:%b %-d} – {day:%b %-d, %Y}"
+        label = f"{_md(start)} – {_mdy(day)}"
         return start.timestamp(), min(end.timestamp(), time.time()), label
 
     # day (default)
     start = datetime.datetime.combine(day, datetime.time.min, tz)
     end = start + datetime.timedelta(days=1)
-    return start.timestamp(), min(end.timestamp(), time.time()), f"{day:%b %-d, %Y}"
+    return start.timestamp(), min(end.timestamp(), time.time()), _mdy(day)
 
 
 def _parse_point(s: str) -> tuple[datetime.datetime, bool]:
@@ -69,14 +79,14 @@ def custom_ctx(from_: str | None, to_: str | None, tz_name: str) -> dict:
     now = time.time()
 
     if dates_only:
-        label = (f"{p0:%b %-d, %Y}" if p0.date() == p1.date()
-                 else f"{p0:%b %-d} – {p1:%b %-d, %Y}")
+        label = (_mdy(p0) if p0.date() == p1.date()
+                 else f"{_md(p0)} – {_mdy(p1)}")
         fmt = lambda dt: dt.date().isoformat()  # noqa: E731
     elif p0.date() == end.date():
-        label = f"{p0:%b %-d, %Y} · {p0:%H:%M} – {end:%H:%M}"
+        label = f"{_mdy(p0)} · {p0:%H:%M} – {end:%H:%M}"
         fmt = lambda dt: dt.isoformat(timespec="minutes")  # noqa: E731
     else:
-        label = f"{p0:%b %-d %H:%M} – {end:%b %-d %H:%M, %Y}"
+        label = f"{_md(p0)} {p0:%H:%M} – {_md(end)} {end:%H:%M}, {end.year}"
         fmt = lambda dt: dt.isoformat(timespec="minutes")  # noqa: E731
 
     span = end - p0
