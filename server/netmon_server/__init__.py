@@ -1,3 +1,3 @@
 """netmon server — central evaluation and web frontend."""
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"

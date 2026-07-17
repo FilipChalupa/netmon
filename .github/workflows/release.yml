@@ -22,7 +22,7 @@ jobs:
           - os: macos-14
             artifact: netmon-macos-arm64
             sep: ":"
-          - os: macos-13
+          - os: macos-15-intel    # last Intel runner label; macos-13 was retired
             artifact: netmon-macos-x86_64
             sep: ":"
           - os: windows-latest
