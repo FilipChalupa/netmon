@@ -17,7 +17,8 @@ server/config/monitors.toml
 server/.env
 
 # --- leftovers of the bash version (data on the measured hosts) ---
-log/
+# root-anchored: an unanchored log/ would also swallow tests/fixtures/log/
+/log/
 /archiv/
 /report.html
 /netmon.run.log
