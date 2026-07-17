@@ -10,6 +10,7 @@ from __future__ import annotations
 import ipaddress
 import platform
 import re
+import shutil
 import socket
 import ssl
 import subprocess
@@ -230,6 +231,38 @@ def reach_probe(url: str, total_timeout: float = 10.0):
                 sock.close()
             except OSError:
                 pass
+
+
+def _traceroute_cmd(ip: str, max_hops: int, system: str) -> list[str] | None:
+    if system == "Windows":
+        return ["tracert", "-d", "-w", "1000", "-h", str(max_hops), ip]
+    if system == "Darwin":
+        return ["traceroute", "-n", "-q", "1", "-w", "1", "-m", str(max_hops), ip]
+    # Linux: traceroute is often not installed; tracepath (iputils) usually is
+    if shutil.which("traceroute"):
+        return ["traceroute", "-n", "-q", "1", "-w", "1", "-m", str(max_hops), ip]
+    if shutil.which("tracepath"):
+        return ["tracepath", "-n", "-m", str(max_hops), ip]
+    return None
+
+
+def traceroute(ip: str, max_hops: int = 15, timeout: float = 60.0,
+               system: str = _SYSTEM) -> str | None:
+    """Best-effort route snapshot (run during outages — the route is only
+    interesting while it is broken). Returns the tool's text output, or None
+    when no tool is available or it failed."""
+    cmd = _traceroute_cmd(ip, max_hops, system)
+    if cmd is None:
+        return None
+    try:
+        res = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+            creationflags=_WIN_NO_WINDOW if system == "Windows" else 0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    out = (res.stdout or "").strip()
+    return out[:4000] if out else None
 
 
 def public_ip(url: str, timeout: float = 10.0) -> str | None:

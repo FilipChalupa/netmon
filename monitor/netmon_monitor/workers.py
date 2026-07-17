@@ -110,6 +110,54 @@ def heartbeat_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
         db.insert_uptime(time.time(), now_iso(), "ALIVE")
 
 
+def internet_outage_active(rows, gateway_names: set[str],
+                           public_names: list[str], min_rounds: int) -> bool:
+    """True when the last min_rounds complete ping rounds each lost ALL public
+    targets while the gateway still answered (= internet outage, not local).
+
+    rows: (ts_epoch, target, status) tuples ordered by time.
+    """
+    rounds: dict[float, dict[str, str]] = {}
+    for ts, target, status in rows:
+        rounds.setdefault(ts, {})[target] = status
+    last = sorted(rounds)[-min_rounds:]
+    if len(last) < min_rounds:
+        return False
+    for ts in last:
+        rd = rounds[ts]
+        if not public_names or not all(rd.get(t) == "LOSS" for t in public_names):
+            return False
+        if any(rd.get(g) == "LOSS" for g in gateway_names):
+            return False  # gateway down too → local problem, route is moot
+    return True
+
+
+def diag_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
+    """Capture one traceroute per public target while the internet is down —
+    the broken route can't be reconstructed after the fact. Re-arms after
+    diag_cooldown so a flapping line doesn't run traceroutes back to back."""
+    if not cfg.diag_enabled:
+        return
+    gateway_names = {n for n, ip in cfg.targets if ip == "auto"}
+    publics = [(n, ip) for n, ip in cfg.targets if ip != "auto"]
+    window = max(cfg.ping_interval * (cfg.diag_min_rounds + 1.5), 10.0)
+    last_fire = -1e12
+    while not stop.wait(5.0):
+        if time.monotonic() - last_fire < cfg.diag_cooldown:
+            continue
+        rows = db.recent_latency(time.time() - window)
+        if not internet_outage_active(rows, gateway_names,
+                                      [n for n, _ in publics], cfg.diag_min_rounds):
+            continue
+        last_fire = time.monotonic()
+        for name, ip in publics:
+            if stop.is_set():
+                break
+            out = probes.traceroute(ip)
+            if out:
+                db.insert_diag(time.time(), now_iso(), name, out)
+
+
 def pubip_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
     """Record the public IP only when it changes (ISP handover, CGNAT,
     reconnect). last_pubip() seeds the comparison so restarts don't
@@ -128,7 +176,8 @@ def purge_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
         db.purge(cfg.retention_days)
 
 
-ALL_LOOPS = [ping_loop, reach_loop, speed_loop, heartbeat_loop, pubip_loop, purge_loop]
+ALL_LOOPS = [ping_loop, reach_loop, speed_loop, heartbeat_loop, pubip_loop,
+             diag_loop, purge_loop]
 
 
 def start_workers(cfg: Config, db: Db, stop: threading.Event) -> list[threading.Thread]:

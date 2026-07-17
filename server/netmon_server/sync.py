@@ -28,6 +28,7 @@ ROW_FIELDS = {
     "speed": ("down_mbps", "bytes", "seconds", "http_code"),
     "uptime": ("event",),
     "pubip": ("ip",),
+    "diag": ("target", "output"),
 }
 
 

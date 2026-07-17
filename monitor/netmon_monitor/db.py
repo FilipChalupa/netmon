@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS pubip(
     ip TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pubip_ts ON pubip(ts_epoch);
+
+CREATE TABLE IF NOT EXISTS diag(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_epoch REAL NOT NULL,
+    ts_iso TEXT NOT NULL,
+    target TEXT NOT NULL,
+    output TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_diag_ts ON diag(ts_epoch);
 """
 
 # columns returned by the API, in JSON row order
@@ -73,6 +82,7 @@ KIND_COLUMNS = {
     "speed": ["id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code"],
     "uptime": ["id", "ts_epoch", "ts_iso", "event"],
     "pubip": ["id", "ts_epoch", "ts_iso", "ip"],
+    "diag": ["id", "ts_epoch", "ts_iso", "target", "output"],
 }
 
 
@@ -130,6 +140,19 @@ class Db:
             row = self._conn.execute(
                 "SELECT ip FROM pubip ORDER BY id DESC LIMIT 1").fetchone()
         return row[0] if row else None
+
+    def insert_diag(self, ts_epoch, ts_iso, target, output):
+        self._write(
+            "INSERT INTO diag(ts_epoch, ts_iso, target, output) VALUES(?,?,?,?)",
+            (ts_epoch, ts_iso, target, output),
+        )
+
+    def recent_latency(self, since_epoch: float) -> list[tuple]:
+        """(ts_epoch, target, status) rows since the given time, ordered."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT ts_epoch, target, status FROM latency "
+                "WHERE ts_epoch>=? ORDER BY ts_epoch", (since_epoch,)).fetchall()
 
     def purge(self, retention_days: int) -> int:
         """Delete records older than retention_days. Returns deleted row count."""

@@ -21,6 +21,8 @@ function fmtTs(epoch, longRange) {
   return d.toLocaleDateString('en-GB', {day: 'numeric', month: 'short'}) + ' ' + hm;
 }
 const fmtIso = iso => (iso || '').replace('T', ' ').slice(0, 19);
+const esc = s => String(s).replace(/[&<>"]/g,
+  c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
 async function getJSON(url) {
   const r = await fetch(url);
@@ -365,10 +367,18 @@ function renderEvents(events) {
     const pad = Math.max(300, e.dur);  // zoom to the outage with breathing room
     const zoom = `?range=custom&from=${epochToLocalInput(e.start_epoch - pad)}` +
                  `&to=${epochToLocalInput(e.end_epoch + pad)}`;
-    return `<tr><td><a href="${zoom}" title="Zoom to this outage">${fmtIso(e.start)}</a></td>` +
+    let html = `<tr><td><a href="${zoom}" title="Zoom to this outage">${fmtIso(e.start)}</a></td>` +
            `<td>${fmtIso(e.end).slice(11)}</td>` +
            `<td style="text-align:right">${fmtDur(e.dur)}</td>` +
            `<td><span class="pill ${local ? 'bad' : 'warn'}">${local ? 'local link' : 'internet / ISP'}</span></td></tr>`;
+    if (e.diags && e.diags.length) {
+      const inner = e.diags.map(d =>
+        `<div class="diag-h">traceroute → ${esc(d.target)} · ${fmtIso(d.ts_iso)}</div>` +
+        `<pre class="diag">${esc(d.output)}</pre>`).join('');
+      html += `<tr><td colspan="4" style="border-bottom:1px solid #233044">` +
+              `<details><summary>🔍 route snapshot captured during the outage</summary>${inner}</details></td></tr>`;
+    }
+    return html;
   }).join('');
   el.innerHTML = head + `<table class="evt"><thead><tr><th>start</th><th>end</th>` +
     `<th style="text-align:right">duration</th><th>scope</th></tr></thead><tbody>${rows}</tbody></table>`;

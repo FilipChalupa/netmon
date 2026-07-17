@@ -39,6 +39,10 @@ class Config:
     # public IP is checked often but recorded only when it changes
     pubip_interval: float = 900.0
     pubip_url: str = "https://api.ipify.org"
+    # traceroute snapshot while an internet outage is happening
+    diag_enabled: bool = True
+    diag_min_rounds: int = 3      # rounds of full public loss before firing
+    diag_cooldown: float = 600.0  # min seconds between snapshots
 
     def resolved_db_path(self) -> str:
         return os.path.expanduser(self.db_path)
@@ -93,4 +97,8 @@ def load_config(path: str) -> Config:
     cfg.heartbeat_interval = float(p.get("heartbeat_interval", cfg.heartbeat_interval))
     cfg.pubip_interval = float(p.get("pubip_interval", cfg.pubip_interval))
     cfg.pubip_url = p.get("pubip_url", cfg.pubip_url).strip()
+    cfg.diag_enabled = str(p.get("diag_enabled", cfg.diag_enabled)).strip().lower() \
+        not in ("0", "false", "no")
+    cfg.diag_min_rounds = int(p.get("diag_min_rounds", cfg.diag_min_rounds))
+    cfg.diag_cooldown = float(p.get("diag_cooldown", cfg.diag_cooldown))
     return cfg

@@ -141,6 +141,22 @@ def pubip_history(conn: sqlite3.Connection, network_id: int,
     }
 
 
+def attach_diags(conn: sqlite3.Connection, network_id: int,
+                 event_dicts: list[dict], t0: float, t1: float) -> list[dict]:
+    """Attach traceroute snapshots to the outage events they were captured
+    during (small grace after the end — a traceroute takes a while)."""
+    rows = conn.execute(
+        "SELECT ts_epoch, ts_iso, target, output FROM diag "
+        "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
+        (network_id, t0 - 60, t1 + 300)).fetchall()
+    for e in event_dicts:
+        e["diags"] = [
+            {"ts_iso": r["ts_iso"], "target": r["target"], "output": r["output"]}
+            for r in rows
+            if e["start_epoch"] - 60 <= r["ts_epoch"] <= e["end_epoch"] + 300]
+    return event_dicts
+
+
 def daily_heatmap(conn: sqlite3.Connection, network_id: int, tz_name: str,
                   days: int = 365, end_day: datetime.date | None = None,
                   public_targets: tuple[str, ...] = PUBLIC_TARGETS) -> list[dict]:
@@ -271,7 +287,8 @@ def summary(conn: sqlite3.Connection, network_id: int,
         },
         "uptime": uptime_panel(conn, network_id, t0, t1),
         "pubip": pubip_history(conn, network_id, t0, t1),
-        "events": [e.as_dict() for e in events],
+        "events": attach_diags(conn, network_id,
+                               [e.as_dict() for e in events], t0, t1),
         "events_summary": events_summary(events),
         "period": {"first": meta["first_iso"], "last": meta["last_iso"]},
     }

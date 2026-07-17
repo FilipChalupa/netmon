@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from .. import VERSION
-from ..aggregate import (daily_heatmap, latency_series, pick_bucket, reach_series,
-                         speed_points, summary)
+from ..aggregate import (attach_diags, daily_heatmap, latency_series, pick_bucket,
+                         reach_series, speed_points, summary)
 from ..db import connect, get_network
 from ..events import derive_events
 from ..notes import create_note, delete_note, list_notes
@@ -148,7 +148,8 @@ def net_events(request: Request, name: str, t0: float, t1: float):
     cfg = request.app.state.cfg
     conn = _open(request)
     try:
-        events = derive_events(conn, _net_id(conn, name), t0, t1, cfg.ping_interval)
-        return [e.as_dict() for e in events]
+        net_id = _net_id(conn, name)
+        events = derive_events(conn, net_id, t0, t1, cfg.ping_interval)
+        return attach_diags(conn, net_id, [e.as_dict() for e in events], t0, t1)
     finally:
         conn.close()
