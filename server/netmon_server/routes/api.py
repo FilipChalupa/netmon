@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import time
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import VERSION
@@ -93,6 +95,23 @@ def net_series(request: Request, name: str, t0: float, t1: float):
         }
     finally:
         conn.close()
+
+
+@router.post("/net/{name}/run/speed")
+async def run_speed(request: Request, name: str):
+    """Trigger an immediate speed test on the network's monitor. The result
+    arrives through the normal sync within a minute or two."""
+    cfg = request.app.state.cfg
+    mon = next((m for m in cfg.monitors if m.name == name), None)
+    if mon is None:
+        raise HTTPException(404, f"No configured monitor for network: {name}")
+    headers = {"X-Netmon-Token": mon.token} if mon.token else {}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{mon.url}/api/run/speed", headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Monitor unreachable: {e}")
+    return JSONResponse(resp.json(), status_code=resp.status_code)
 
 
 @router.get("/net/{name}/heatmap")

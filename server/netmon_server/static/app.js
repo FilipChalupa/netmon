@@ -280,14 +280,17 @@ function pxToEpoch(chart, epochs, x) {
   return epochs[i] + (pos - i) * (epochs[i + 1] - epochs[i]);
 }
 
-/* Clicking a chart prefills the note form with the clicked moment. */
-function prefillNoteAt(chart, epochs, x) {
+/* Prefill the note form with a moment (chart clicks, outage 📝 buttons). */
+function prefillNoteEpoch(t) {
   const form = document.getElementById('noteForm');
-  const t = pxToEpoch(chart, epochs, x);
   if (!form || t == null) return;
   document.getElementById('noteTs').value = epochToLocalInput(t);
   form.scrollIntoView({behavior: 'smooth', block: 'center'});
   document.getElementById('noteText').focus({preventScroll: true});
+}
+
+function prefillNoteAt(chart, epochs, x) {
+  prefillNoteEpoch(pxToEpoch(chart, epochs, x));
 }
 
 /* Navigate to a custom range covering [t0, t1] (minute granularity). */
@@ -515,7 +518,8 @@ function renderEvents(events) {
            `<td>${fmtIso(e.end).slice(11)}</td>` +
            `<td style="text-align:right">${fmtDur(e.dur)}</td>` +
            `<td><span class="pill ${ui.pill}">${ui.label}</span> ` +
-           `<button class="evtcopy" data-i="${i}" title="Copy an ISP-ready report of this outage">📋</button></td></tr>`;
+           `<button class="evtcopy" data-i="${i}" title="Copy an ISP-ready report of this outage">📋</button>` +
+           `<button class="evtcopy evtnote" data-t="${e.start_epoch}" title="Add a note for this outage">📝</button></td></tr>`;
     if (e.diags && e.diags.length) {
       const inner = e.diags.map(d =>
         `<div class="diag-h">traceroute → ${esc(d.target)} · ${fmtIso(d.ts_iso)}</div>` +
@@ -527,11 +531,13 @@ function renderEvents(events) {
   }).join('');
   el.innerHTML = head + `<table class="evt"><thead><tr><th>start</th><th>end</th>` +
     `<th style="text-align:right">duration</th><th>scope</th></tr></thead><tbody>${rows}</tbody></table>`;
-  el.querySelectorAll('.evtcopy').forEach(btn => btn.addEventListener('click', async () => {
+  el.querySelectorAll('.evtcopy:not(.evtnote)').forEach(btn => btn.addEventListener('click', async () => {
     const ok = await copyText(outageReport(sorted[+btn.dataset.i]));
     btn.textContent = ok ? '✓' : '✗';
     setTimeout(() => { btn.textContent = '📋'; }, 1600);
   }));
+  el.querySelectorAll('.evtnote').forEach(btn => btn.addEventListener('click',
+    () => prefillNoteEpoch(+btn.dataset.t)));
 }
 
 /* Plain-text outage report — paste-ready for an ISP support chat/email. */
@@ -796,6 +802,38 @@ async function pageNetwork() {
   }
 }
 
+/* Overlapping non-local outages across networks (60 s slack) — when two
+   ISPs drop at once the problem is upstream/regional, not either line. */
+function correlatedOutages(nets, slack = 60) {
+  const evs = [];
+  nets.forEach(n => (n.today.events || []).forEach(e => {
+    if (e.scope !== 'local') evs.push({net: n.label, start: e.start_epoch, end: e.end_epoch});
+  }));
+  evs.sort((a, b) => a.start - b.start);
+  const clusters = [];
+  evs.forEach(e => {
+    const last = clusters[clusters.length - 1];
+    if (last && e.start <= last.end + slack) {
+      last.end = Math.max(last.end, e.end);
+      last.nets.add(e.net);
+    } else {
+      clusters.push({start: e.start, end: e.end, nets: new Set([e.net])});
+    }
+  });
+  return clusters.filter(c => c.nets.size >= 2)
+    .map(c => ({start: c.start, end: c.end, nets: [...c.nets]}));
+}
+
+function renderCorrelation(nets) {
+  const el = document.getElementById('corrBanner');
+  if (!el) return;
+  const hm = t => fmtTs(t, false);
+  el.innerHTML = correlatedOutages(nets).map(c => `
+    <div class="panel"><p>⚠ <b>${hm(c.start)}–${hm(c.end)}</b>: an outage hit
+    <b>${c.nets.map(esc).join(' + ')}</b> at the same time — most likely an
+    upstream / regional problem, not your line.</p></div>`).join('');
+}
+
 async function pageDashboard() {
   const nets = await getJSON('/api/networks');
   const el = document.getElementById('netcards');
@@ -839,6 +877,7 @@ async function pageDashboard() {
   const anyBad = nets.some(n => isOngoing(n.today.events));
   const anyData = nets.some(n => n.today.targets.length);
   setTabStatus(anyBad ? 'bad' : anyData ? 'ok' : 'unk');
+  renderCorrelation(nets);
 
   // sparklines: 24h latency of the public targets, loss ticks behind
   const now = Date.now() / 1000;
@@ -1003,10 +1042,27 @@ async function shareRange() {
   }
 }
 
+async function runSpeedTest() {
+  const btn = document.getElementById('runSpeed');
+  btn.disabled = true;
+  const old = btn.textContent;
+  try {
+    const r = await fetch(`/api/net/${window.PAGE.name}/run/speed`, {method: 'POST'});
+    const j = await r.json().catch(() => ({}));
+    btn.textContent = r.status === 202 ? '⏳ running — the result appears within a minute'
+                    : r.status === 409 ? '⏳ a test is already running'
+                    : '✗ ' + (j.detail || j.error || 'failed');
+  } catch (e) {
+    btn.textContent = '✗ server unreachable';
+  }
+  setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 6000);
+}
+
 function netmonInit() {
   initNoteForm();
   checkForUpdate();
   document.getElementById('shareRange')?.addEventListener('click', shareRange);
+  document.getElementById('runSpeed')?.addEventListener('click', runSpeedTest);
   document.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey ||
         /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;

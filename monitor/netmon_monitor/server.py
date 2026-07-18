@@ -1,9 +1,12 @@
 """Mini HTTP API for the evaluation server (pull over Tailscale).
 
 Endpoints:
-  GET /api/health                          → {status, time, started_at}
-  GET /api/info                            → {network, version, hostname, targets, intervals}
-  GET /api/data/{kind}?after_id=N&limit=M  → {kind, rows, last_id, more}
+  GET  /api/health                          → {status, time, started_at}
+  GET  /api/info                            → {network, version, hostname, targets, intervals}
+  GET  /api/data/{kind}?after_id=N&limit=M  → {kind, rows, last_id, more}
+  POST /api/run/speed                       → 202 started | 409 busy
+                                              (on-demand test, result lands in
+                                              the speed table like any other)
 
 Authentication: X-Netmon-Token header (only when a token is configured).
 """
@@ -14,12 +17,45 @@ import hmac
 import http.server
 import json
 import socket
+import sqlite3
+import threading
+import time
 import urllib.parse
 
 from . import VERSION
 from .config import Config
 from .db import KIND_COLUMNS, fetch_after
-from .workers import now_iso
+from .workers import measure_speed, now_iso
+
+# only one on-demand speed test at a time — a second request gets 409
+_ondemand_speed = threading.Lock()
+
+
+def run_speed_test_async(cfg: Config, db_path: str) -> bool:
+    """Kick off a speed test in a background thread; False when one is
+    already running. Uses its own SQLite connection (WAL + busy timeout),
+    so it doesn't need the workers' writer instance."""
+    if not _ondemand_speed.acquire(blocking=False):
+        return False
+
+    def run():
+        try:
+            mbps, bytes_, seconds, code = measure_speed(cfg, threading.Event())
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.execute("PRAGMA busy_timeout=5000")
+                conn.execute(
+                    "INSERT INTO speed(ts_epoch, ts_iso, down_mbps, bytes, "
+                    "seconds, http_code) VALUES(?,?,?,?,?,?)",
+                    (time.time(), now_iso(), mbps, bytes_, seconds, code))
+                conn.commit()
+            finally:
+                conn.close()
+        finally:
+            _ondemand_speed.release()
+
+    threading.Thread(target=run, daemon=True, name="speed-ondemand").start()
+    return True
 
 MAX_LIMIT = 10000
 DEFAULT_LIMIT = 5000
@@ -86,6 +122,20 @@ def make_handler(cfg: Config, db_path: str, started_at: str):
                 rows, more = fetch_after(db_path, kind, after_id, limit)
                 last_id = rows[-1]["id"] if rows else after_id
                 self._send_json(200, {"kind": kind, "rows": rows, "last_id": last_id, "more": more})
+            else:
+                self._send_json(404, {"error": "unknown path"})
+
+        def do_POST(self):
+            parsed = urllib.parse.urlsplit(self.path)
+            path = parsed.path.rstrip("/")
+            if not self._check_token():
+                self._send_json(401, {"error": "invalid token"})
+                return
+            if path == "/api/run/speed":
+                if run_speed_test_async(cfg, db_path):
+                    self._send_json(202, {"status": "started"})
+                else:
+                    self._send_json(409, {"status": "busy"})
             else:
                 self._send_json(404, {"error": "unknown path"})
 

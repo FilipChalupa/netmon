@@ -190,6 +190,41 @@ def test_dblclick_zooms_out_to_day(page, server):
     assert f"date={mid.strftime('%Y-%m-%d')}" in page.url
 
 
+def test_outage_note_button_prefills_form(page, server):
+    _open_network(page, server)
+    page.wait_for_selector(".evtnote")
+    start = page.get_attribute(".evtnote", "data-t")
+    page.click(".evtnote")
+    value = page.input_value("#noteTs")
+    expected = page.evaluate(f"epochToLocalInput({start})")
+    assert value == expected
+
+
+def test_correlation_logic(page, server):
+    page.goto(server + "/")
+    page.wait_for_selector(".card h3")
+    clusters = page.evaluate("""correlatedOutages([
+      {label: 'A', today: {events: [
+        {scope: 'internet', start_epoch: 1000, end_epoch: 1120}]}},
+      {label: 'B', today: {events: [
+        {scope: 'internet', start_epoch: 1050, end_epoch: 1200},
+        {scope: 'local',    start_epoch: 5000, end_epoch: 5100}]}},
+      {label: 'C', today: {events: [
+        {scope: 'internet', start_epoch: 9000, end_epoch: 9100}]}},
+    ])""")
+    assert len(clusters) == 1
+    assert sorted(clusters[0]["nets"]) == ["A", "B"]   # C alone, local ignored
+
+
+def test_run_speed_button_feedback(page, server):
+    """No monitor is configured in the fixture → the proxy answers 404 and
+    the button must surface the failure instead of pretending."""
+    _open_network(page, server)
+    page.click("#runSpeed")
+    page.wait_for_function(
+        "document.getElementById('runSpeed').textContent.includes('✗')")
+
+
 def test_share_button_pins_the_visible_range(page, server):
     """The permalink converts relative views to an absolute custom range."""
     _open_network(page, server)
