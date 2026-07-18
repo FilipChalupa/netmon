@@ -33,7 +33,8 @@ networks at once, with central evaluation and web charts.
 ## Quick start: single binary (all-in-one)
 
 Download the binary for your OS from
-[Releases](../../releases) (Linux x86_64, macOS arm64/x86_64, Windows) and run:
+[Releases](../../releases) (Linux x86_64/arm64 — Raspberry Pi included,
+macOS arm64/x86_64, Windows) and run:
 
 ```bash
 ./netmon --network home        # measure this machine's network + web UI on :8000

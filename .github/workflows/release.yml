@@ -19,6 +19,9 @@ jobs:
           - os: ubuntu-22.04          # oldest LTS runner → binary runs on newer glibc
             artifact: netmon-linux-x86_64
             sep: ":"
+          - os: ubuntu-24.04-arm      # Raspberry Pi & other arm64 boxes
+            artifact: netmon-linux-arm64
+            sep: ":"
           - os: macos-14
             artifact: netmon-macos-arm64
             sep: ":"
