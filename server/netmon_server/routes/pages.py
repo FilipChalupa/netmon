@@ -6,7 +6,7 @@ import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ..db import connect, get_network
@@ -80,6 +80,14 @@ def network_detail(request: Request, name: str, range: str = "day", date: str | 
     ctx = {"net": dict(net), "networks": [dict(n) for n in nets], "extra_qs": ""}
     ctx.update(_range_ctx(request, range, date, from_, to))
     return templates.TemplateResponse(request, "network.html", ctx)
+
+
+@router.get("/sw.js", include_in_schema=False)
+def service_worker():
+    """Served from the root so the worker's scope covers the whole app."""
+    return FileResponse(
+        Path(__file__).resolve().parent.parent / "static" / "sw.js",
+        media_type="application/javascript")
 
 
 @router.get("/status", response_class=HTMLResponse)

@@ -55,9 +55,13 @@ function state(n) {
           sub: cnt ? cnt + '× brief outage earlier today' : 'no outages today'};
 }
 
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v={{ VERSION }}');
+
 async function refresh() {
   try {
-    const nets = await (await fetch('/api/networks')).json();
+    const r = await fetch('/api/networks');
+    const cachedAt = r.headers.get('x-netmon-cached-at');
+    const nets = await r.json();
     const el = document.getElementById('nets');
     el.innerHTML = nets.map(n => {
       const st = state(n);
@@ -66,7 +70,10 @@ async function refresh() {
         <div class="state ${st.cls}">${st.txt}</div>
         <div class="sub">${st.sub}</div></div></div>`;
     }).join('') || '<div class="net"><div class="sub">No networks configured yet.</div></div>';
-    document.getElementById('upd').textContent = new Date().toLocaleTimeString('en-GB');
+    document.getElementById('upd').textContent = cachedAt
+      ? '⚠ OFFLINE — last known state from ' +
+        new Date(+cachedAt).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})
+      : new Date().toLocaleTimeString('en-GB');
   } catch (e) { /* keep the last state on transient errors */ }
 }
 refresh();

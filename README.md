@@ -230,7 +230,8 @@ the gap = controlled shutdown, otherwise a crash).
 selected networks or general (none selected = applies to all). Notes show
 as dashed markers with hover tooltips in all charts (network detail and
 comparison), are listed in the daily email report, and clicking a chart
-prefills the note form with the clicked moment. Derived outages are also
+prefills the note form with the clicked moment. The web UI is an
+installable PWA and works offline (last known data with a stale banner). Derived outages are also
 shaded directly in the charts (red = local, amber = internet), and a
 GitHub-style calendar heatmap at the bottom of the network page shows a
 year of daily internet loss — click a day to open it.

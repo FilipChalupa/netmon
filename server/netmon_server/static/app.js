@@ -24,9 +24,29 @@ const fmtIso = iso => (iso || '').replace('T', ' ').slice(0, 19);
 const esc = s => String(s).replace(/[&<>"]/g,
   c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
+/* Cached responses from the service worker carry x-netmon-cached-at —
+   surface a banner so stale data is never mistaken for live data. */
+function updateOfflineBanner(cachedAt) {
+  let el = document.getElementById('offlineBanner');
+  if (cachedAt == null) {
+    el?.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'offlineBanner';
+    document.body.appendChild(el);
+  }
+  const when = new Date(cachedAt).toLocaleTimeString('en-GB',
+    {hour: '2-digit', minute: '2-digit'});
+  el.textContent = `⚠ offline — showing last known data from ${when}`;
+}
+
 async function getJSON(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(url + ' → HTTP ' + r.status);
+  const cachedAt = r.headers.get('x-netmon-cached-at');
+  updateOfflineBanner(cachedAt == null ? null : +cachedAt);
   return r.json();
 }
 

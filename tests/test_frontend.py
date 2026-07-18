@@ -86,15 +86,19 @@ def server(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def page(server):
+def browser(server):
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch()
-            pg = browser.new_page()
-            yield pg
-            browser.close()
+            b = pw.chromium.launch()
+            yield b
+            b.close()
     except PWError as e:
         pytest.skip(f"chromium unavailable: {e}")
+
+
+@pytest.fixture(scope="module")
+def page(browser):
+    return browser.new_page()
 
 
 def _open_network(page, server):
@@ -151,6 +155,29 @@ def test_drag_zoom_navigates_to_custom_range(page, server):
     page.mouse.up()
     page.wait_for_url("**range=custom**")
     assert "from=" in page.url and "to=" in page.url
+
+
+def test_offline_serves_last_known_data(browser, server):
+    """Offline-first: after one online visit, the app must open offline with
+    the last known data and an explicit stale-data banner."""
+    ctx = browser.new_context()
+    pg = ctx.new_page()
+    pg.goto(server + "/net/e2e")
+    pg.wait_for_function(
+        "navigator.serviceWorker.ready.then(() => true) && true")
+    pg.wait_for_timeout(800)
+    pg.reload()   # now the worker controls the page and caches everything
+    pg.wait_for_function("!!Chart.getChart(document.getElementById('latChart'))")
+    pg.wait_for_timeout(800)
+
+    ctx.set_offline(True)
+    pg.reload()
+    pg.wait_for_function("!!Chart.getChart(document.getElementById('latChart'))")
+    pg.wait_for_selector("#offlineBanner")
+    banner = pg.inner_text("#offlineBanner")
+    assert "offline" in banner and "last known data" in banner
+    assert "internet / ISP" in pg.inner_text("#events")  # cached outage table
+    ctx.close()
 
 
 def test_add_note_roundtrip(page, server):

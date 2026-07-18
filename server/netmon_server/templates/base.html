@@ -66,6 +66,7 @@
   .notenets .hint{color:var(--mut);opacity:.8}
   .notedel{background:none;border:0;color:var(--mut);cursor:pointer;font-size:14px;padding:2px 6px}
   .notedel:hover{color:var(--bad)}
+  #offlineBanner{position:fixed;bottom:0;left:0;right:0;z-index:50;background:rgba(245,158,11,.95);color:#0f172a;font-weight:600;font-size:13px;text-align:center;padding:7px 12px}
   .hm-scroll{overflow-x:auto;padding-bottom:4px}
   .hm-grid{display:flex;gap:3px}
   .hm-week{display:flex;flex-direction:column;gap:3px;flex:none}
@@ -101,7 +102,10 @@
 </nav>
 {% block content %}{% endblock %}
 <div class="foot">netmon {{ VERSION }} · evaluation server · <a href="/status" style="color:var(--mut)">status page</a><span id="updateHint"></span></div>
-<script>window.NETMON_VERSION = {{ VERSION | tojson }};</script>
+<script>
+window.NETMON_VERSION = {{ VERSION | tojson }};
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v={{ VERSION }}');
+</script>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}
 </body>
