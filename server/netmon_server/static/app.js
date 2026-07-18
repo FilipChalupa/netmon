@@ -32,6 +32,8 @@ async function getJSON(url) {
 
 const baseOpts = yLabel => ({
   responsive: true, interaction: {mode: 'index', intersect: false},
+  // phones: 2:1 charts end up ~170 px tall — trade width for height instead
+  aspectRatio: window.innerWidth < 600 ? 1.2 : 2,
   scales: {
     x: {ticks: {color: '#94a3b8', maxTicksLimit: 12, maxRotation: 0}, grid: {color: '#1e293b'}},
     y: {title: {display: true, text: yLabel, color: '#94a3b8'},
@@ -110,7 +112,9 @@ const overlaysPlugin = {
     // track the stable mark object from options — $noteXs entries are
     // rebuilt on every draw, so their identity can't survive a redraw
     let hover = null;
-    if (args.event.type === 'mousemove' && args.inChartArea) {
+    // 'click' covers touch: tapping a marker shows the tooltip
+    if ((args.event.type === 'mousemove' || args.event.type === 'click') &&
+        args.inChartArea) {
       let best = 9;
       for (const m of marks) {
         const d = Math.abs(args.event.x - m.px);
@@ -230,6 +234,8 @@ function zoomTo(t0, t1) {
 function enableDragZoom(chart, epochs) {
   const canvas = chart.canvas;
   canvas.style.cursor = 'crosshair';
+  // touch: keep vertical page scrolling native, claim horizontal drags for zoom
+  canvas.style.touchAction = 'pan-y';
   let startX = null;
   const relX = e => e.clientX - canvas.getBoundingClientRect().left;
   canvas.addEventListener('pointerdown', e => {
@@ -249,7 +255,9 @@ function enableDragZoom(chart, epochs) {
     chart.$dragSel = null;
     chart.draw();
     if (Math.abs(x1 - x0) < 8) {
-      prefillNoteAt(chart, epochs, x1);
+      // a tap on a marker means "show me the tooltip", not "new note here"
+      const nearMark = (chart.$noteXs || []).some(m => Math.abs(x1 - m.px) < 9);
+      if (!nearMark) prefillNoteAt(chart, epochs, x1);
       return;
     }
     const tA = pxToEpoch(chart, epochs, Math.min(x0, x1));
@@ -545,8 +553,10 @@ function renderHeatmap(days) {
     return `<a class="hm ${cls(d)}" href="/net/${window.PAGE.name}?range=day&date=${d.day}" title="${tip}"></a>`;
   };
   el.innerHTML =
+    `<div class="hm-scroll">` +
     `<div class="hm-months">${months.map(m => `<span>${m}</span>`).join('')}</div>` +
     `<div class="hm-grid">${weeks.map(w => `<div class="hm-week">${w.map(cell).join('')}</div>`).join('')}</div>` +
+    `</div>` +
     `<div class="hm-legend">Internet packet loss per day:
        <span class="hm hm-ok"></span> ≤ 0.1%
        <span class="hm hm-warn"></span> ≤ 1%

@@ -37,6 +37,7 @@
   code{background:var(--bg);border:1px solid #334155;border-radius:5px;padding:1px 5px;font-size:13px}
   canvas{max-height:320px}
   table.evt{width:100%;border-collapse:collapse;font-size:14px}
+  #events,#uptime,#noteList{overflow-x:auto}
   table.evt th{text-align:left;color:var(--mut);font-weight:600;padding:6px 10px;border-bottom:1px solid #334155}
   table.evt td{padding:6px 10px;border-bottom:1px solid #233044;font-variant-numeric:tabular-nums}
   .range{display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap;font-size:14px}
@@ -44,8 +45,8 @@
   .range a{padding:5px 12px;border-radius:8px;background:var(--card);border:1px solid #334155;color:var(--mut)}
   .range a.active{color:var(--fg);border-color:var(--accent)}
   .range .lbl{color:var(--mut);margin-left:6px}
-  .rangepick{display:flex;gap:6px;align-items:center;margin-left:6px}
-  .rangepick input[type=date]{background:var(--card);border:1px solid #334155;border-radius:8px;padding:4px 8px;color:var(--fg);font:inherit;color-scheme:dark}
+  .rangepick{display:flex;gap:6px;align-items:center;margin-left:6px;flex-wrap:wrap}
+  .rangepick input[type=date]{background:var(--card);border:1px solid #334155;border-radius:8px;padding:4px 8px;color:var(--fg);font:inherit;color-scheme:dark;min-width:0}
   .rangepick span{color:var(--mut)}
   .rangepick button{padding:5px 12px;border-radius:8px;background:var(--card);border:1px solid #334155;color:var(--mut);cursor:pointer;font:inherit}
   .rangepick button.active{color:var(--fg);border-color:var(--accent)}
@@ -61,7 +62,8 @@
   .notenets .hint{color:var(--mut);opacity:.8}
   .notedel{background:none;border:0;color:var(--mut);cursor:pointer;font-size:14px;padding:2px 6px}
   .notedel:hover{color:var(--bad)}
-  .hm-grid{display:flex;gap:3px;overflow-x:auto;padding-bottom:4px}
+  .hm-scroll{overflow-x:auto;padding-bottom:4px}
+  .hm-grid{display:flex;gap:3px}
   .hm-week{display:flex;flex-direction:column;gap:3px;flex:none}
   .hm{width:11px;height:11px;border-radius:2px;display:inline-block;flex:none}
   a.hm:hover{outline:1px solid var(--fg)}
