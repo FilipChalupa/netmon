@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is the internet OK?</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--mut:#94a3b8;--fg:#e2e8f0;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
+       min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+  .net{background:var(--card);border:1px solid #334155;border-radius:16px;padding:22px 28px;margin:10px;
+       display:flex;gap:18px;align-items:center;min-width:min(420px,90vw)}
+  .dot{width:22px;height:22px;border-radius:50%;flex:none}
+  .dot.ok{background:var(--ok);box-shadow:0 0 14px rgba(34,197,94,.6)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 14px rgba(239,68,68,.7);animation:pulse 1.2s infinite}
+  .dot.unk{background:#475569}
+  @keyframes pulse{50%{opacity:.35}}
+  .name{font-size:14px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+  .state{font-size:22px;font-weight:700}
+  .state.bad{color:var(--bad)} .state.ok{color:var(--ok)} .state.unk{color:var(--mut)}
+  .sub{color:var(--mut);font-size:14px}
+  .foot{margin-top:26px;color:var(--mut);font-size:12px}
+  .foot a{color:var(--mut)}
+</style>
+</head>
+<body>
+<div id="nets"><div class="net"><span class="dot unk"></span><div>
+  <div class="state unk">Loading…</div></div></div></div>
+<div class="foot">updated <span id="upd">—</span> · refreshes every 30 s · <a href="/">details</a></div>
+<script>
+const PUBLIC = ['quad9', 'google'];
+const hm = e => new Date(e * 1000).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+
+function state(n) {
+  const s = n.today;
+  const ongoing = (s.events || []).find(e => e.end_epoch >= Date.now() / 1000 - 90);
+  if (ongoing) {
+    return {cls: 'bad', txt: ongoing.scope === 'local' ? 'OUTAGE — local network' : 'OUTAGE — internet provider',
+            sub: 'since ' + hm(ongoing.start_epoch)};
+  }
+  if (n.sync.configured && !n.sync.online) {
+    return {cls: 'unk', txt: 'UNKNOWN', sub: 'monitor unreachable'};
+  }
+  if (!s.targets.length) {
+    return {cls: 'unk', txt: 'NO DATA', sub: 'nothing measured today'};
+  }
+  const cnt = (s.events || []).length;
+  return {cls: 'ok', txt: 'Internet is OK',
+          sub: cnt ? cnt + '× brief outage earlier today' : 'no outages today'};
+}
+
+async function refresh() {
+  try {
+    const nets = await (await fetch('/api/networks')).json();
+    const el = document.getElementById('nets');
+    el.innerHTML = nets.map(n => {
+      const st = state(n);
+      return `<div class="net"><span class="dot ${st.cls}"></span><div>
+        <div class="name">${n.label}</div>
+        <div class="state ${st.cls}">${st.txt}</div>
+        <div class="sub">${st.sub}</div></div></div>`;
+    }).join('') || '<div class="net"><div class="sub">No networks configured yet.</div></div>';
+    document.getElementById('upd').textContent = new Date().toLocaleTimeString('en-GB');
+  } catch (e) { /* keep the last state on transient errors */ }
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

@@ -82,6 +82,12 @@ def network_detail(request: Request, name: str, range: str = "day", date: str | 
     return templates.TemplateResponse(request, "network.html", ctx)
 
 
+@router.get("/status", response_class=HTMLResponse)
+def status_page(request: Request):
+    """Read-only shareable status — big OK/OUTAGE indicator, no controls."""
+    return templates.TemplateResponse(request, "status.html", {})
+
+
 @router.get("/help", response_class=HTMLResponse)
 def help_page(request: Request):
     conn = connect(request.app.state.cfg.db_path)

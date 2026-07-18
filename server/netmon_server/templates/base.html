@@ -94,7 +94,7 @@
   <a class="item {% if request.url.path == '/help' %}active{% endif %}" href="/help">How it works</a>
 </nav>
 {% block content %}{% endblock %}
-<div class="foot">netmon {{ VERSION }} · evaluation server<span id="updateHint"></span></div>
+<div class="foot">netmon {{ VERSION }} · evaluation server · <a href="/status" style="color:var(--mut)">status page</a><span id="updateHint"></span></div>
 <script>window.NETMON_VERSION = {{ VERSION | tojson }};</script>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}
