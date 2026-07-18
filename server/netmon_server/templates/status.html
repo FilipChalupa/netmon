@@ -37,8 +37,9 @@ function state(n) {
   const s = n.today;
   const ongoing = (s.events || []).find(e => e.end_epoch >= Date.now() / 1000 - 90);
   if (ongoing) {
-    return {cls: 'bad', txt: ongoing.scope === 'local' ? 'OUTAGE — local network' : 'OUTAGE — internet provider',
-            sub: 'since ' + hm(ongoing.start_epoch)};
+    const what = {local: 'OUTAGE — local network', internet: 'OUTAGE — internet provider',
+                  reach: 'OUTAGE — internet unusable (DNS)'}[ongoing.scope] || 'OUTAGE';
+    return {cls: 'bad', txt: what, sub: 'since ' + hm(ongoing.start_epoch)};
   }
   if (n.sync.configured && !n.sync.online) {
     return {cls: 'unk', txt: 'UNKNOWN', sub: 'monitor unreachable'};

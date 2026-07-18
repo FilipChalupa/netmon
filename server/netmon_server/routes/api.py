@@ -11,7 +11,7 @@ from .. import VERSION
 from ..aggregate import (attach_diags, daily_heatmap, latency_series, pick_bucket,
                          reach_series, speed_points, summary)
 from ..db import connect, get_network
-from ..events import derive_events
+from ..events import derive_events, derive_reach_events, merge_events
 from ..notes import create_note, delete_note, list_notes
 from ..timerange import resolve_range
 
@@ -49,7 +49,8 @@ def networks(request: Request):
             st = conn.execute("SELECT * FROM sync_status WHERE network_id=?",
                               (net["id"],)).fetchone()
             last_ok = st["last_ok_at"] if st else None
-            s = summary(conn, net["id"], t0, t1, cfg.ping_interval)
+            s = summary(conn, net["id"], t0, t1, cfg.ping_interval,
+                        cfg.alert_reach_fails)
             out.append({
                 "name": net["name"],
                 "label": net["label"],
@@ -72,7 +73,8 @@ def net_summary(request: Request, name: str, t0: float, t1: float):
     cfg = request.app.state.cfg
     conn = _open(request)
     try:
-        return summary(conn, _net_id(conn, name), t0, t1, cfg.ping_interval)
+        return summary(conn, _net_id(conn, name), t0, t1, cfg.ping_interval,
+                       cfg.alert_reach_fails)
     finally:
         conn.close()
 
@@ -149,7 +151,9 @@ def net_events(request: Request, name: str, t0: float, t1: float):
     conn = _open(request)
     try:
         net_id = _net_id(conn, name)
-        events = derive_events(conn, net_id, t0, t1, cfg.ping_interval)
+        events = merge_events(
+            derive_events(conn, net_id, t0, t1, cfg.ping_interval),
+            derive_reach_events(conn, net_id, t0, t1, cfg.alert_reach_fails))
         return attach_diags(conn, net_id, [e.as_dict() for e in events], t0, t1)
     finally:
         conn.close()

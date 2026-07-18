@@ -14,7 +14,8 @@ import socket
 import sqlite3
 from zoneinfo import ZoneInfo
 
-from .events import PUBLIC_TARGETS, derive_events, events_summary
+from .events import (PUBLIC_TARGETS, derive_events, derive_reach_events,
+                     events_summary, merge_events)
 
 UPTIME_GAP_THRESHOLD = 150  # s; a heartbeat gap longer than this = measuring wasn't running
 MAX_POINTS = 1500
@@ -233,7 +234,8 @@ def uptime_panel(conn: sqlite3.Connection, network_id: int,
 
 
 def summary(conn: sqlite3.Connection, network_id: int,
-            t0: float, t1: float, ping_interval: float = 2.0) -> dict:
+            t0: float, t1: float, ping_interval: float = 2.0,
+            reach_min_fails: int = 10) -> dict:
     """Summary for cards: per-target samples/loss/latency, speed, coverage, outages."""
     target_rows = conn.execute(
         "SELECT target, COUNT(*) AS samples, "
@@ -266,7 +268,9 @@ def summary(conn: sqlite3.Connection, network_id: int,
         (network_id, t0, t1),
     ).fetchone()
 
-    events = derive_events(conn, network_id, t0, t1, ping_interval)
+    events = merge_events(
+        derive_events(conn, network_id, t0, t1, ping_interval),
+        derive_reach_events(conn, network_id, t0, t1, reach_min_fails))
 
     meta = conn.execute(
         "SELECT MIN(ts_epoch) AS first, MAX(ts_epoch) AS last, "

@@ -75,7 +75,8 @@ def _net_text(label: str, s: dict, notes: list[dict] = ()) -> str:
     if not es:
         lines.append("Outages: none 🎉")
     else:
-        for scope, lbl in (("local", "local link"), ("internet", "internet/ISP")):
+        for scope, lbl in (("local", "local link"), ("internet", "internet/ISP"),
+                           ("reach", "reach/DNS")):
             if scope in es:
                 e = es[scope]
                 lines.append(f"Outages ({lbl}): {e['count']}× · total {_fmt_dur(e['total_s'])} "
@@ -170,7 +171,8 @@ def build_report(cfg: ServerConfig, day: datetime.date):
         nets = conn.execute("SELECT * FROM networks ORDER BY name").fetchall()
         sections, attachments = [], []
         for net in nets:
-            s = summary(conn, net["id"], t0, t1, cfg.ping_interval)
+            s = summary(conn, net["id"], t0, t1, cfg.ping_interval,
+                        cfg.alert_reach_fails)
             if not s["targets"]:
                 continue  # this network measured nothing that day
             notes = _fmt_notes(list_notes(conn, t0, t1, [net["name"]]), tz)

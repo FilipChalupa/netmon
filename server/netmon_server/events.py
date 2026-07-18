@@ -23,7 +23,11 @@ PUBLIC_TARGETS = ("quad9", "google")
 NOTES = {
     "local": "local link (gateway unreachable)",
     "internet": "internet (both public targets unreachable)",
+    "reach": "internet unusable (reach probes failing, pings OK)",
 }
+
+# reach samples arrive every ~30 s; a bigger hole means the monitor was down
+REACH_GAP_S = 150.0
 
 
 @dataclass
@@ -101,9 +105,55 @@ def derive_events(conn: sqlite3.Connection, network_id: int,
     return events
 
 
+def derive_reach_events(conn: sqlite3.Connection, network_id: int,
+                        t0: float, t1: float, min_fails: int = 10,
+                        max_gap_s: float = REACH_GAP_S) -> list[Event]:
+    """Runs of consecutive reach-probe FAILs as events — "pings work but the
+    internet doesn't" (broken DNS, filtered traffic). Same threshold as the
+    email alert; runs are split where the monitor wasn't sampling."""
+    rows = conn.execute(
+        "SELECT ts_epoch, ts_iso, status FROM reach "
+        "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
+        (network_id, t0, t1),
+    ).fetchall()
+    events: list[Event] = []
+    run: list = []
+
+    def close():
+        nonlocal run
+        if len(run) >= min_fails:
+            start, end = run[0], run[-1]
+            dur = max(int(round(end["ts_epoch"] - start["ts_epoch"])), 30)
+            events.append(Event(start["ts_epoch"], end["ts_epoch"],
+                                start["ts_iso"], end["ts_iso"], dur, "reach"))
+        run = []
+
+    for r in rows:
+        if r["status"] != "FAIL":
+            close()
+        elif run and r["ts_epoch"] - run[-1]["ts_epoch"] > max_gap_s:
+            close()
+            run = [r]
+        else:
+            run.append(r)
+    close()
+    return events
+
+
+def merge_events(ping_events: list[Event],
+                 reach_events: list[Event]) -> list[Event]:
+    """Ping-derived and reach-derived events on one timeline. A reach run
+    overlapping a hard outage is its consequence, not a second incident —
+    it is dropped, mirroring the email alert's suppression."""
+    kept = [r for r in reach_events
+            if not any(e.start_epoch <= r.end_epoch and e.end_epoch >= r.start_epoch
+                       for e in ping_events)]
+    return sorted(ping_events + kept, key=lambda e: e.start_epoch)
+
+
 def events_summary(events: list[Event]) -> dict:
     out = {}
-    for scope in ("local", "internet"):
+    for scope in ("local", "internet", "reach"):
         evs = [e for e in events if e.scope == scope]
         if not evs:
             continue

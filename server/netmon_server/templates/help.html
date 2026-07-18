@@ -69,8 +69,10 @@ Intervals and targets below are the defaults — every monitor can override them
   <p>Then an HTTP GET must return a status code (expected 204). If <i>any</i> phase fails
   or times out (10&nbsp;s total budget), the sample is recorded as <b>FAIL</b>. This is the
   probe that catches the classic <i>“ping works but the internet doesn't”</i> — ICMP can
-  flow while DNS is down or TCP/443 is being dropped. Sustained FAILs also trigger an
-  e-mail alert even when ping loss is zero.</p>
+  flow while DNS is down or TCP/443 is being dropped. A sustained run of FAILs shows up
+  as a violet outage in the table and charts (unless a ping-derived outage overlaps —
+  then it's the same incident) and also triggers an e-mail alert even when ping loss
+  is zero.</p>
 </div>
 
 <div class="panel">
@@ -122,7 +124,8 @@ Intervals and targets below are the defaults — every monitor can override them
     than 100&nbsp;%.</li>
     <li><b>Shaded bands</b> are detected outages:
     <span class="pill bad">red = local link</span>
-    <span class="pill warn">amber = internet / ISP</span></li>
+    <span class="pill warn">amber = internet / ISP</span>
+    <span class="pill viol">violet = DNS / reach failing while pings work</span></li>
     <li><b>Yellow dashed lines</b> are your notes (📝) — hover for the text, click a chart
     to add one at that moment.</li>
     <li><b>Calendar heatmap:</b> one cell per day, colored by that day's packet loss on the

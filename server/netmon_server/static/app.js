@@ -46,7 +46,13 @@ const baseOpts = yLabel => ({
 /* ---------- chart overlays: note markers + outage bands ---------- */
 
 const NOTE_COLOR = '#eab308';
-const BAND_COLORS = {local: 'rgba(239,68,68,.18)', internet: 'rgba(245,158,11,.18)'};
+const BAND_COLORS = {local: 'rgba(239,68,68,.18)', internet: 'rgba(245,158,11,.18)',
+                     reach: 'rgba(167,139,250,.18)'};
+const SCOPE_UI = {
+  local: {pill: 'bad', label: 'local link'},
+  internet: {pill: 'warn', label: 'internet / ISP'},
+  reach: {pill: 'viol', label: 'DNS / reach'},
+};
 
 /* Fractional position of epoch t on a category axis whose ticks sit at `epochs`.
    Returns null when t falls outside the axis span (plus one median step of slack);
@@ -367,18 +373,22 @@ function renderEvents(events) {
   const tot = {};
   events.forEach(e => tot[e.scope] = (tot[e.scope] || 0) + e.dur);
   let head = '<div style="margin-bottom:10px">';
-  if (tot.local) head += `<span class="pill bad">local: ${events.filter(e => e.scope === 'local').length}× · ${fmtDur(tot.local)}</span> `;
-  if (tot.internet) head += `<span class="pill warn">internet: ${events.filter(e => e.scope === 'internet').length}× · ${fmtDur(tot.internet)}</span>`;
+  for (const [scope, ui] of Object.entries(SCOPE_UI)) {
+    if (tot[scope]) {
+      head += `<span class="pill ${ui.pill}">${ui.label}: ` +
+              `${events.filter(e => e.scope === scope).length}× · ${fmtDur(tot[scope])}</span> `;
+    }
+  }
   head += '</div>';
   const rows = events.slice().sort((a, b) => b.dur - a.dur).map(e => {
-    const local = e.scope === 'local';
+    const ui = SCOPE_UI[e.scope] || SCOPE_UI.internet;
     const pad = Math.max(300, e.dur);  // zoom to the outage with breathing room
     const zoom = `?range=custom&from=${epochToLocalInput(e.start_epoch - pad)}` +
                  `&to=${epochToLocalInput(e.end_epoch + pad)}`;
     let html = `<tr><td><a href="${zoom}" title="Zoom to this outage">${fmtIso(e.start)}</a></td>` +
            `<td>${fmtIso(e.end).slice(11)}</td>` +
            `<td style="text-align:right">${fmtDur(e.dur)}</td>` +
-           `<td><span class="pill ${local ? 'bad' : 'warn'}">${local ? 'local link' : 'internet / ISP'}</span></td></tr>`;
+           `<td><span class="pill ${ui.pill}">${ui.label}</span></td></tr>`;
     if (e.diags && e.diags.length) {
       const inner = e.diags.map(d =>
         `<div class="diag-h">traceroute → ${esc(d.target)} · ${fmtIso(d.ts_iso)}</div>` +
