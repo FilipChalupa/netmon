@@ -19,5 +19,7 @@
     <input type="date" name="to" value="{{ to_date }}" required>
     <button type="submit" class="{% if range == 'custom' %}active{% endif %}">Apply</button>
   </form>
+  <button id="shareRange" type="button" class="sharebtn"
+          title="Share a link to this exact time range">📤 Share</button>
   <span class="lbl">{{ range_label }}</span>
 </div>

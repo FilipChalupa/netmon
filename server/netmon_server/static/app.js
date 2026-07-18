@@ -813,9 +813,56 @@ async function checkForUpdate() {
   } catch (e) { /* offline or rate-limited — stay quiet */ }
 }
 
+/* ---------- share: permalink to the exact visible range ---------- */
+
+/* Relative views (today, last 24 h) resolve to whatever "now" is when the
+   link is opened — pin the current t0/t1 so the recipient sees this exact
+   window. PAGE.t1 tracks live refreshes, so it's always what's on screen. */
+function permalinkUrl() {
+  const p = window.PAGE;
+  const q = new URLSearchParams(window.location.search);
+  q.set('range', 'custom');
+  q.set('from', epochToLocalInput(p.t0));
+  q.set('to', epochToLocalInput(p.t1));
+  q.delete('date');
+  return window.location.origin + window.location.pathname + '?' + q.toString();
+}
+
+async function shareRange() {
+  const btn = document.getElementById('shareRange');
+  const url = permalinkUrl();
+  if (navigator.share) {
+    try {
+      await navigator.share({title: document.title, url});
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;  // user closed the sheet
+      // unsupported payload etc. → fall through to the clipboard
+    }
+  }
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    ok = true;
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    ok = document.execCommand('copy');
+    ta.remove();
+  }
+  if (btn) {
+    const old = btn.textContent;
+    btn.textContent = ok ? '✓ copied' : url;
+    setTimeout(() => { btn.textContent = old; }, 1600);
+  }
+}
+
 function netmonInit() {
   initNoteForm();
   checkForUpdate();
+  document.getElementById('shareRange')?.addEventListener('click', shareRange);
   document.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey ||
         /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;

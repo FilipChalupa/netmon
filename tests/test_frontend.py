@@ -157,6 +157,18 @@ def test_drag_zoom_navigates_to_custom_range(page, server):
     assert "from=" in page.url and "to=" in page.url
 
 
+def test_share_button_pins_the_visible_range(page, server):
+    """The permalink converts relative views to an absolute custom range."""
+    _open_network(page, server)
+    url = page.evaluate("permalinkUrl()")
+    assert "range=custom" in url and "from=" in url and "to=" in url
+    assert "date=" not in url
+    page.click("#shareRange")
+    # headless has no share sheet — clipboard (or fallback) path shows feedback
+    page.wait_for_function(
+        "/copied|http/.test(document.getElementById('shareRange').textContent)")
+
+
 def test_offline_serves_last_known_data(browser, server):
     """Offline-first: after one online visit, the app must open offline with
     the last known data and an explicit stale-data banner."""
