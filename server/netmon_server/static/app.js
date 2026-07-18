@@ -24,6 +24,51 @@ const fmtIso = iso => (iso || '').replace('T', ' ').slice(0, 19);
 const esc = s => String(s).replace(/[&<>"]/g,
   c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
+/* ---------- live tab status: favicon dot + title prefix ---------- */
+
+const BASE_TITLE = document.title;
+const isOngoing = events =>
+  (events || []).some(e => e.end_epoch >= Date.now() / 1000 - 90);
+
+/* Redraws the tab icon (📡 + colored state dot) so a pinned tab shows the
+   network state at a glance. */
+function setTabStatus(state) {  // 'ok' | 'bad' | 'unk'
+  document.title = (state === 'bad' ? '⛔ ' : '') + BASE_TITLE;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.font = '52px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('📡', 32, 34);
+  ctx.beginPath();
+  ctx.arc(47, 47, 14, 0, Math.PI * 2);
+  ctx.fillStyle = {ok: '#22c55e', bad: '#ef4444'}[state] || '#64748b';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#0f172a';
+  ctx.stroke();
+  const link = document.querySelector('link[rel="icon"]');
+  if (link) link.href = c.toDataURL('image/png');
+}
+
+/* ---------- clipboard helper (share button, outage reports) ---------- */
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }
+}
+
 /* Cached responses from the service worker carry x-netmon-cached-at —
    surface a banner so stale data is never mistaken for live data. */
 function updateOfflineBanner(cachedAt) {
@@ -255,14 +300,29 @@ function zoomTo(t0, t1) {
   window.location.search = q.toString();
 }
 
+/* Double-click steps one level out: custom → the containing day → week. */
+function zoomOut() {
+  const p = window.PAGE;
+  const q = new URLSearchParams(window.location.search);
+  const date = epochToLocalInput((p.t0 + p.t1) / 2).slice(0, 10);
+  if (p.range === 'custom') q.set('range', 'day');
+  else if (p.range === 'day') q.set('range', 'week');
+  else return;
+  q.set('date', date);
+  q.delete('from');
+  q.delete('to');
+  window.location.search = q.toString();
+}
+
 /* Drag on a chart selects a time span and zooms into it; a plain click
-   prefills the note form instead. */
+   prefills the note form; a double-click zooms one level out. */
 function enableDragZoom(chart, epochs) {
   const canvas = chart.canvas;
   canvas.style.cursor = 'crosshair';
   // touch: keep vertical page scrolling native, claim horizontal drags for zoom
   canvas.style.touchAction = 'pan-y';
   let startX = null;
+  let prefillTimer = null;
   const relX = e => e.clientX - canvas.getBoundingClientRect().left;
   canvas.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
@@ -283,18 +343,62 @@ function enableDragZoom(chart, epochs) {
     if (Math.abs(x1 - x0) < 8) {
       // a tap on a marker means "show me the tooltip", not "new note here"
       const nearMark = (chart.$noteXs || []).some(m => Math.abs(x1 - m.px) < 9);
-      if (!nearMark) prefillNoteAt(chart, epochs, x1);
+      // deferred so a double-click (zoom out) can cancel the prefill
+      if (!nearMark) prefillTimer = setTimeout(() => prefillNoteAt(chart, epochs, x1), 300);
       return;
     }
     const tA = pxToEpoch(chart, epochs, Math.min(x0, x1));
     const tB = pxToEpoch(chart, epochs, Math.max(x0, x1));
     if (tA != null && tB != null && tB - tA >= 60) zoomTo(tA, tB);
   });
+  canvas.addEventListener('dblclick', () => {
+    clearTimeout(prefillTimer);
+    zoomOut();
+  });
   canvas.addEventListener('pointercancel', () => {
     startX = null;
     chart.$dragSel = null;
     chart.draw();
   });
+}
+
+/* ---------- copy a chart as an image (ISP complaint attachments) ---------- */
+
+function chartToBlob(chart) {
+  const src = chart.canvas;
+  const c = document.createElement('canvas');
+  c.width = src.width;
+  c.height = src.height;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1e293b';   // charts are transparent — give the PNG the panel bg
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(src, 0, 0);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+function addChartCopyButton(chart) {
+  const h2 = chart.canvas.closest('.panel')?.querySelector('h2');
+  if (!h2 || h2.querySelector('.chartcopy')) return;
+  const btn = document.createElement('button');
+  btn.className = 'chartcopy';
+  btn.title = 'Copy this chart as an image (downloads when the clipboard is unavailable)';
+  btn.textContent = '📷';
+  btn.addEventListener('click', async () => {
+    const blob = await chartToBlob(chart);
+    try {
+      await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+      btn.textContent = '✓';
+    } catch (e) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'netmon-chart.png';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      btn.textContent = '⬇';
+    }
+    setTimeout(() => { btn.textContent = '📷'; }, 1600);
+  });
+  h2.appendChild(btn);
 }
 
 function lineChart(id, labels, datasets, yLabel, overlays) {
@@ -305,6 +409,7 @@ function lineChart(id, labels, datasets, yLabel, overlays) {
   if (overlays) opts.plugins.overlays = overlays;
   const chart = new Chart(el, {type: 'line', data: {labels, datasets}, options: opts});
   if (overlays) enableDragZoom(chart, overlays.epochs);
+  addChartCopyButton(chart);
 }
 
 /* ---------- cards and panels of the network detail (per report-html.sh) ---------- */
@@ -400,7 +505,8 @@ function renderEvents(events) {
     }
   }
   head += '</div>';
-  const rows = events.slice().sort((a, b) => b.dur - a.dur).map(e => {
+  const sorted = events.slice().sort((a, b) => b.dur - a.dur);
+  const rows = sorted.map((e, i) => {
     const ui = SCOPE_UI[e.scope] || SCOPE_UI.internet;
     const pad = Math.max(300, e.dur);  // zoom to the outage with breathing room
     const zoom = `?range=custom&from=${epochToLocalInput(e.start_epoch - pad)}` +
@@ -408,7 +514,8 @@ function renderEvents(events) {
     let html = `<tr><td><a href="${zoom}" title="Zoom to this outage">${fmtIso(e.start)}</a></td>` +
            `<td>${fmtIso(e.end).slice(11)}</td>` +
            `<td style="text-align:right">${fmtDur(e.dur)}</td>` +
-           `<td><span class="pill ${ui.pill}">${ui.label}</span></td></tr>`;
+           `<td><span class="pill ${ui.pill}">${ui.label}</span> ` +
+           `<button class="evtcopy" data-i="${i}" title="Copy an ISP-ready report of this outage">📋</button></td></tr>`;
     if (e.diags && e.diags.length) {
       const inner = e.diags.map(d =>
         `<div class="diag-h">traceroute → ${esc(d.target)} · ${fmtIso(d.ts_iso)}</div>` +
@@ -420,6 +527,29 @@ function renderEvents(events) {
   }).join('');
   el.innerHTML = head + `<table class="evt"><thead><tr><th>start</th><th>end</th>` +
     `<th style="text-align:right">duration</th><th>scope</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.querySelectorAll('.evtcopy').forEach(btn => btn.addEventListener('click', async () => {
+    const ok = await copyText(outageReport(sorted[+btn.dataset.i]));
+    btn.textContent = ok ? '✓' : '✗';
+    setTimeout(() => { btn.textContent = '📋'; }, 1600);
+  }));
+}
+
+/* Plain-text outage report — paste-ready for an ISP support chat/email. */
+function outageReport(e) {
+  const net = document.querySelector('h1')?.textContent || window.PAGE.name || '';
+  const lines = [
+    `Internet outage report — network "${net}"`,
+    `From:     ${fmtIso(e.start)}`,
+    `To:       ${fmtIso(e.end)}`,
+    `Duration: ${fmtDur(e.dur)}`,
+    `Type:     ${e.note}`,
+  ];
+  (e.diags || []).forEach(d => {
+    lines.push('', `Traceroute captured during the outage (→ ${d.target}, ${fmtIso(d.ts_iso)}):`,
+               d.output);
+  });
+  lines.push('', `Recorded by netmon ${window.NETMON_VERSION || ''}`.trim());
+  return lines.join('\n');
 }
 
 /* ---------- shared time grid ----------
@@ -613,6 +743,7 @@ async function pageNetwork() {
   renderUptime(sum.uptime);
   renderEvents(sum.events);
   renderNotes(notes);
+  setTabStatus(isOngoing(sum.events) ? 'bad' : sum.targets.length ? 'ok' : 'unk');
   // public IP changes show as teal markers alongside the yellow note marks
   const ipMarks = (sum.pubip ? sum.pubip.changes : []).map(c => ({
     t: c.ts_epoch, text: 'Public IP → ' + c.ip, when: fmtTs(c.ts_epoch, true),
@@ -705,6 +836,10 @@ async function pageDashboard() {
       </div>`);
   });
 
+  const anyBad = nets.some(n => isOngoing(n.today.events));
+  const anyData = nets.some(n => n.today.targets.length);
+  setTabStatus(anyBad ? 'bad' : anyData ? 'ok' : 'unk');
+
   // sparklines: 24h latency of the public targets, loss ticks behind
   const now = Date.now() / 1000;
   await Promise.all(nets.map(n =>
@@ -746,6 +881,26 @@ async function pageCompare() {
     label: netLabel(n), data: fn(series[i]), borderColor: colorForNet(i),
     backgroundColor: colorForNet(i), borderWidth: 1.8, tension: .25,
   })).filter(Boolean);
+
+  // one-line numeric comparison above the charts, best latency first
+  const stats = nets.map((n, i) => {
+    const s = series[i];
+    if (!s) return null;
+    const avg = arr => {
+      const v = arr.filter(x => x != null);
+      return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null;
+    };
+    return {label: netLabel(n), rtt: avg(mkSeries(s, t => t.rtt)),
+            loss: avg(mkSeries(s, t => t.loss))};
+  }).filter(s => s && s.rtt != null);
+  const sumEl = document.getElementById('cmpSummary');
+  if (sumEl && stats.length > 1) {
+    // loss trumps latency: a lossy line is worse than a slightly slower one
+    stats.sort((a, b) => (a.loss || 0) - (b.loss || 0) || a.rtt - b.rtt);
+    sumEl.textContent = 'Averages over this range: ' + stats.map((s, i) =>
+      `${s.label} ${s.rtt.toFixed(1)} ms / ${(s.loss || 0).toFixed(2)} % loss` +
+      (i === 0 ? ' (best)' : '')).join(' · ');
+  }
 
   lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms', overlays);
   lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss', overlays);
@@ -840,18 +995,7 @@ async function shareRange() {
       // unsupported payload etc. → fall through to the clipboard
     }
   }
-  let ok = false;
-  try {
-    await navigator.clipboard.writeText(url);
-    ok = true;
-  } catch (e) {
-    const ta = document.createElement('textarea');
-    ta.value = url;
-    document.body.appendChild(ta);
-    ta.select();
-    ok = document.execCommand('copy');
-    ta.remove();
-  }
+  const ok = await copyText(url);
   if (btn) {
     const old = btn.textContent;
     btn.textContent = ok ? '✓ copied' : url;

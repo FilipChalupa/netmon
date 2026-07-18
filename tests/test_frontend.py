@@ -157,6 +157,39 @@ def test_drag_zoom_navigates_to_custom_range(page, server):
     assert "from=" in page.url and "to=" in page.url
 
 
+def test_outage_copy_and_tab_status(page, server):
+    _open_network(page, server)
+    # favicon replaced by the live-status one
+    page.wait_for_function(
+        "document.querySelector('link[rel=icon]').href.startsWith('data:image/png')")
+    # copy button produces an ISP-ready report and flashes feedback
+    report = page.evaluate("""() => {
+      const evs = [...document.querySelectorAll('#events .evtcopy')];
+      return evs.length ? 'has-buttons' : 'none';
+    }""")
+    assert report == "has-buttons"
+    page.click("#events .evtcopy")
+    page.wait_for_function(
+        "/[✓✗]/.test(document.querySelector('#events .evtcopy').textContent)")
+
+
+def test_dblclick_zooms_out_to_day(page, server):
+    import datetime
+    mid = datetime.datetime.now() - datetime.timedelta(minutes=45)
+    frm = mid.strftime("%Y-%m-%dT%H:%M")
+    to = (mid + datetime.timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M")
+    page.goto(server + f"/net/e2e?range=custom&from={frm}&to={to}")
+    page.wait_for_function("!!Chart.getChart(document.getElementById('latChart'))")
+    page.locator("#latChart").scroll_into_view_if_needed()
+    box = page.eval_on_selector("#latChart", """el => {
+      const a = Chart.getChart(el).chartArea, b = el.getBoundingClientRect();
+      return {x: b.left + (a.left + a.right) / 2, y: b.top + (a.top + a.bottom) / 2};
+    }""")
+    page.mouse.dblclick(box["x"], box["y"])
+    page.wait_for_url("**range=day**")
+    assert f"date={mid.strftime('%Y-%m-%d')}" in page.url
+
+
 def test_share_button_pins_the_visible_range(page, server):
     """The permalink converts relative views to an absolute custom range."""
     _open_network(page, server)
