@@ -739,8 +739,43 @@ function scheduleLiveRefresh(renderFn) {
   }, 60000);
 }
 
+/* ---------- update check (binary/self-hosted installs) ---------- */
+
+const RELEASES_API = 'https://api.github.com/repos/FilipChalupa/netmon/releases/latest';
+const RELEASES_URL = 'https://github.com/FilipChalupa/netmon/releases/latest';
+
+const cmpVer = (a, b) => {   // "2.1.5" vs "2.2.0" → -1/0/1
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return Math.sign(d);
+  }
+  return 0;
+};
+
+async function checkForUpdate() {
+  const el = document.getElementById('updateHint');
+  const cur = window.NETMON_VERSION;
+  if (!el || !cur) return;
+  const show = tag => {
+    if (tag && cmpVer(tag.replace(/^v/, ''), cur) > 0) {
+      el.innerHTML = ` · <a href="${RELEASES_URL}">update available: ${esc(tag)}</a>`;
+    }
+  };
+  try {
+    const cached = JSON.parse(localStorage.getItem('netmonLatestRelease') || 'null');
+    if (cached && Date.now() - cached.at < 86400e3) { show(cached.tag); return; }
+    const r = await fetch(RELEASES_API);
+    if (!r.ok) return;
+    const tag = (await r.json()).tag_name || '';
+    localStorage.setItem('netmonLatestRelease', JSON.stringify({at: Date.now(), tag}));
+    show(tag);
+  } catch (e) { /* offline or rate-limited — stay quiet */ }
+}
+
 function netmonInit() {
   initNoteForm();
+  checkForUpdate();
   document.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey ||
         /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;

@@ -12,8 +12,11 @@ from fastapi.templating import Jinja2Templates
 from ..db import connect, get_network
 from ..timerange import custom_ctx, resolve_range
 
+from .. import VERSION
+
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+templates.env.globals["VERSION"] = VERSION
 
 
 def _range_ctx(request: Request, range_: str, date_: str | None,
