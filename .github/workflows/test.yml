@@ -13,7 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r server/requirements.txt pytest
+      - run: pip install -r server/requirements.txt pytest playwright
+      - run: playwright install --with-deps chromium
       - name: Run tests
         shell: bash
         run: python -m pytest tests/ -q 2>&1 | tee pytest.log
