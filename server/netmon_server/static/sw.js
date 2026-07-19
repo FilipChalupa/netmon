@@ -39,15 +39,6 @@ async function store(cache, req, res) {
   }));
 }
 
-async function cacheFirst(req) {
-  const cache = await caches.open(CACHE);
-  const hit = await cache.match(req);
-  if (hit) return hit;
-  const res = await fetch(req);
-  if (res.ok) await store(cache, req, res.clone());
-  return res;
-}
-
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
   try {
@@ -65,9 +56,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/mcp')) return;   // live protocol, never cached
-  if (url.pathname.startsWith('/static/')) {
-    e.respondWith(cacheFirst(e.request));
-  } else {
-    e.respondWith(networkFirst(e.request));
-  }
+  // network-first even for /static/: a cache-first shell would pin stale JS
+  // across same-version deploys; on a LAN the latency cost is negligible
+  e.respondWith(networkFirst(e.request));
 });

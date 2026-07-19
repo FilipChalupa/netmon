@@ -1025,7 +1025,10 @@ function permalinkUrl() {
 async function shareRange() {
   const btn = document.getElementById('shareRange');
   const url = permalinkUrl();
-  if (navigator.share) {
+  // the OS share sheet is only reliable on touch devices; desktop Chrome
+  // (notably on Windows) can reject silently — there, copy directly
+  const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+  if (navigator.share && touch) {
     try {
       await navigator.share({title: document.title, url});
       return;
@@ -1035,9 +1038,13 @@ async function shareRange() {
     }
   }
   const ok = await copyText(url);
+  if (!ok) {
+    window.prompt('Copy this link:', url);  // last resort, always visible
+    return;
+  }
   if (btn) {
     const old = btn.textContent;
-    btn.textContent = ok ? '✓ copied' : url;
+    btn.textContent = '✓ copied';
     setTimeout(() => { btn.textContent = old; }, 1600);
   }
 }
