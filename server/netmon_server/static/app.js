@@ -893,15 +893,15 @@ async function pageDashboard() {
       statePill = '<span class="pill ok">OK</span>';
     }
     el.insertAdjacentHTML('beforeend', `
-      <div class="card">
-        <h3><a href="/net/${n.name}">${n.label}</a> ${statePill}</h3>
+      <a class="card cardlink" href="/net/${n.name}" aria-label="Open ${n.label}">
+        <h3>${n.label} ${statePill}</h3>
         <div class="metric"><span>Loss (internet)</span><span class="pill ${lossCls(worstLoss)}">${worstLoss.toFixed(2)}%</span></div>
         <div class="metric"><span>Latency avg</span><span class="v">${pub && pub.avg != null ? pub.avg.toFixed(1) + ' ms' : '—'}</span></div>
         <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' ⬇' + (s.speed.up_last != null ? ' / ' + s.speed.up_last.toFixed(0) + ' ⬆' : '') + ' Mbit/s' : '—'}</span></div>
         <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
         <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
         <div class="sparkwrap"><canvas class="spark" id="spark-${n.name}"></canvas><span>last 24 h</span></div>
-      </div>`);
+      </a>`);
   });
 
   const anyBad = nets.some(n => isOngoing(n.today.events));
