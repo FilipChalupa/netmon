@@ -56,6 +56,25 @@ def _networks(conn):
     return conn.execute("SELECT name, label FROM networks ORDER BY name").fetchall()
 
 
+def not_found_page(request: Request, detail: str | None = None) -> HTMLResponse:
+    """Friendly HTML 404 for page URLs (the JSON handler stays for /api).
+
+    Best-effort nav: a DB hiccup must not turn a 404 into a 500."""
+    try:
+        conn = connect(request.app.state.cfg.db_path)
+        try:
+            nets = [dict(n) for n in _networks(conn)]
+        finally:
+            conn.close()
+    except Exception:
+        nets = []
+    message = detail if detail and detail != "Not Found" else \
+        f"The address {request.url.path} doesn't exist — maybe an old link, or a typo."
+    return templates.TemplateResponse(
+        request, "404.html", {"networks": nets, "message": message},
+        status_code=404)
+
+
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     conn = connect(request.app.state.cfg.db_path)

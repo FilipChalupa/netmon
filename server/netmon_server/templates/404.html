@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}404 · netmon{% endblock %}
+{% block content %}
+<div class="panel" style="text-align:center;padding:56px 20px">
+  <div style="font-size:56px" aria-hidden="true">📡</div>
+  <h1 style="margin:14px 0 6px">404 — nothing measured here</h1>
+  <p class="empty" style="max-width:none;margin:0 auto">{{ message }}</p>
+  <p style="margin-top:26px">
+    <a href="/">← back to the overview</a>
+    {% if networks %} · <a href="/net/{{ networks[0].name }}">{{ networks[0].label }}</a>{% endif %}
+    · <a href="/help">how it works</a>
+  </p>
+</div>
+{% endblock %}

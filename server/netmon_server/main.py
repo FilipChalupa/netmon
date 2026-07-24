@@ -10,8 +10,10 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import VERSION
 from .alerts import alert_loop
@@ -57,3 +59,15 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent /
 app.mount("/mcp", mcp.streamable_http_app())
 app.include_router(api.router)
 app.include_router(pages.router)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    """HTML 404 for page URLs opened in a browser; API/MCP callers and all
+    other status codes keep the standard JSON body."""
+    if (exc.status_code == 404
+            and not request.url.path.startswith(("/api/", "/mcp", "/static/"))
+            and "text/html" in request.headers.get("accept", "")):
+        return pages.not_found_page(request, exc.detail)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                        headers=getattr(exc, "headers", None))
