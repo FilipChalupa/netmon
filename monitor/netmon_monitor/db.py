@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS speed(
     down_mbps REAL,
     bytes INTEGER,
     seconds REAL,
-    http_code INTEGER
+    http_code INTEGER,
+    up_mbps REAL
 );
 CREATE INDEX IF NOT EXISTS idx_speed_ts ON speed(ts_epoch);
 
@@ -79,7 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_diag_ts ON diag(ts_epoch);
 KIND_COLUMNS = {
     "latency": ["id", "ts_epoch", "ts_iso", "target", "ip", "status", "rtt_ms"],
     "reach": ["id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],
-    "speed": ["id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code"],
+    "speed": ["id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code", "up_mbps"],
     "uptime": ["id", "ts_epoch", "ts_iso", "event"],
     "pubip": ["id", "ts_epoch", "ts_iso", "ip"],
     "diag": ["id", "ts_epoch", "ts_iso", "target", "output"],
@@ -96,6 +97,10 @@ class Db:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(SCHEMA)
+        # migration: speed.up_mbps arrived in 2.4 — older DBs lack the column
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(speed)")}
+        if "up_mbps" not in cols:
+            self._conn.execute("ALTER TABLE speed ADD COLUMN up_mbps REAL")
         self._conn.commit()
         self._lock = threading.Lock()
 
@@ -116,10 +121,11 @@ class Db:
             (ts_epoch, ts_iso, dns_ms, tcp_ms, tls_ms, http_code, status),
         )
 
-    def insert_speed(self, ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code):
+    def insert_speed(self, ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code,
+                     up_mbps=None):
         self._write(
-            "INSERT INTO speed(ts_epoch, ts_iso, down_mbps, bytes, seconds, http_code) VALUES(?,?,?,?,?,?)",
-            (ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code),
+            "INSERT INTO speed(ts_epoch, ts_iso, down_mbps, bytes, seconds, http_code, up_mbps) VALUES(?,?,?,?,?,?,?)",
+            (ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code, up_mbps),
         )
 
     def insert_uptime(self, ts_epoch, ts_iso, event):

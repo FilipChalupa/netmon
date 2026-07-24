@@ -293,6 +293,57 @@ def adaptive_speed_bytes(measured_mbps: float, min_seconds: float,
     return min(size, max_bytes)
 
 
+class _UploadBody:
+    """File-like body for upload_test: hands out zero-filled chunks and
+    aborts (raises) between chunks on stop/deadline, mirroring the chunked
+    read loop of speed_test."""
+
+    _CHUNK = b"\0" * 65536
+
+    def __init__(self, size: int, deadline: float, stop):
+        self.remaining = size
+        self.deadline = deadline
+        self.stop = stop
+
+    def read(self, n: int = 65536) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        if self.stop is not None and self.stop.is_set():
+            raise TimeoutError("upload aborted: shutdown")
+        if time.monotonic() > self.deadline:
+            raise TimeoutError("upload aborted: max_time exceeded")
+        n = min(n, len(self._CHUNK), self.remaining)
+        self.remaining -= n
+        return self._CHUNK[:n]
+
+
+def upload_test(url: str, size: int, max_time: float = 120.0, stop=None):
+    """Upload `size` bytes of zeros and measure throughput.
+
+    Returns (up_mbps, bytes, seconds, http_code) — on failure
+    (None, None, seconds, 0). Timing ends when the server's response
+    arrives, i.e. after it has consumed the whole body.
+    """
+    start = time.monotonic()
+    body = _UploadBody(size, start + max_time, stop)
+    try:
+        req = urllib.request.Request(
+            url, data=body, method="POST",
+            headers={"User-Agent": "netmon/2",
+                     "Content-Length": str(size),
+                     "Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            code = resp.status
+            resp.read(4096)  # tiny acknowledgement body, if any
+        seconds = time.monotonic() - start
+        if code not in (200, 204) or size == 0 or seconds <= 0:
+            return None, None, round(seconds, 3), code
+        mbps = size * 8 / 1_000_000 / seconds
+        return round(mbps, 2), size, round(seconds, 6), code
+    except OSError:
+        return None, None, round(time.monotonic() - start, 3), 0
+
+
 def speed_test(url: str, max_time: float = 120.0, stop=None):
     """Download a test file and measure throughput.
 

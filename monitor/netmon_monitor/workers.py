@@ -80,8 +80,8 @@ def reach_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
         stop.wait(cfg.reach_interval)
 
 
-def measure_speed(cfg: Config, stop: threading.Event):
-    """One speed measurement, with an adaptive second pass on fast lines:
+def measure_download(cfg: Config, stop: threading.Event):
+    """One download measurement, with an adaptive second pass on fast lines:
     a test finishing under speed_min_seconds underestimates (TCP ramp-up),
     so it is repeated once with a payload sized for ~2× that duration."""
     mbps, bytes_, seconds, code = probes.speed_test(cfg.resolved_speed_url(), stop=stop)
@@ -97,11 +97,37 @@ def measure_speed(cfg: Config, stop: threading.Event):
     return mbps, bytes_, seconds, code
 
 
+def measure_upload(cfg: Config, stop: threading.Event):
+    """One upload measurement with the same adaptive second pass as download."""
+    up, ub, us, uc = probes.upload_test(cfg.upload_url, cfg.upload_bytes, stop=stop)
+    if (up is not None and us is not None
+            and us < cfg.speed_min_seconds and not stop.is_set()):
+        size2 = probes.adaptive_speed_bytes(up, cfg.speed_min_seconds,
+                                            cfg.upload_max_bytes)
+        if size2 > cfg.upload_bytes:
+            u2, b2, s2, c2 = probes.upload_test(cfg.upload_url, size2, stop=stop)
+            if u2 is not None:
+                return u2, b2, s2, c2
+    return up, ub, us, uc
+
+
+def measure_speed(cfg: Config, stop: threading.Event):
+    """Download + upload in one round. Returns (down_mbps, bytes, seconds,
+    http_code, up_mbps); bytes/seconds/http_code describe the download leg,
+    up_mbps is None when upload is disabled or failed."""
+    mbps, bytes_, seconds, code = measure_download(cfg, stop)
+    up_mbps = None
+    if cfg.upload_url and cfg.upload_bytes > 0 and not stop.is_set():
+        up_mbps = measure_upload(cfg, stop)[0]
+    return mbps, bytes_, seconds, code, up_mbps
+
+
 def speed_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
     while not stop.is_set():  # first test right at startup, then hourly
-        mbps, bytes_, seconds, code = measure_speed(cfg, stop)
+        mbps, bytes_, seconds, code, up_mbps = measure_speed(cfg, stop)
         if not stop.is_set() or mbps is not None:
-            db.insert_speed(time.time(), now_iso(), mbps, bytes_, seconds, code)
+            db.insert_speed(time.time(), now_iso(), mbps, bytes_, seconds, code,
+                            up_mbps)
         stop.wait(cfg.speed_interval)
 
 

@@ -28,3 +28,6 @@ server/.env
 /reach.csv
 /uptime.csv
 /events.csv
+
+# local test virtualenv
+.venv-test/

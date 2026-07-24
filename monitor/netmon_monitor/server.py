@@ -40,14 +40,14 @@ def run_speed_test_async(cfg: Config, db_path: str) -> bool:
 
     def run():
         try:
-            mbps, bytes_, seconds, code = measure_speed(cfg, threading.Event())
+            mbps, bytes_, seconds, code, up_mbps = measure_speed(cfg, threading.Event())
             conn = sqlite3.connect(db_path)
             try:
                 conn.execute("PRAGMA busy_timeout=5000")
                 conn.execute(
                     "INSERT INTO speed(ts_epoch, ts_iso, down_mbps, bytes, "
-                    "seconds, http_code) VALUES(?,?,?,?,?,?)",
-                    (time.time(), now_iso(), mbps, bytes_, seconds, code))
+                    "seconds, http_code, up_mbps) VALUES(?,?,?,?,?,?,?)",
+                    (time.time(), now_iso(), mbps, bytes_, seconds, code, up_mbps))
                 conn.commit()
             finally:
                 conn.close()

@@ -35,6 +35,10 @@ class Config:
     # → re-measure once with a larger payload, capped at speed_max_bytes
     speed_min_seconds: float = 3.0
     speed_max_bytes: int = 200_000_000
+    # upload runs right after each download test; upload_bytes = 0 disables it
+    upload_bytes: int = 20_000_000
+    upload_url: str = "https://speed.cloudflare.com/__up"
+    upload_max_bytes: int = 100_000_000
     heartbeat_interval: float = 60.0
     # public IP is checked often but recorded only when it changes
     pubip_interval: float = 900.0
@@ -94,6 +98,9 @@ def load_config(path: str) -> Config:
     cfg.speed_url = p.get("speed_url", cfg.speed_url).strip()
     cfg.speed_min_seconds = float(p.get("speed_min_seconds", cfg.speed_min_seconds))
     cfg.speed_max_bytes = int(p.get("speed_max_bytes", cfg.speed_max_bytes))
+    cfg.upload_bytes = int(p.get("upload_bytes", cfg.upload_bytes))
+    cfg.upload_url = p.get("upload_url", cfg.upload_url).strip()
+    cfg.upload_max_bytes = int(p.get("upload_max_bytes", cfg.upload_max_bytes))
     cfg.heartbeat_interval = float(p.get("heartbeat_interval", cfg.heartbeat_interval))
     cfg.pubip_interval = float(p.get("pubip_interval", cfg.pubip_interval))
     cfg.pubip_url = p.get("pubip_url", cfg.pubip_url).strip()
