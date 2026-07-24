@@ -1088,6 +1088,54 @@ async function shareRange() {
   }
 }
 
+/* Per-network free-text description (tariff, price, FUP, ISP contact…) —
+   lives on the network row, editable in place on the detail page. */
+function initNetDesc() {
+  const view = document.getElementById('descView');
+  if (!view) return;
+  const text = document.getElementById('descText');
+  const form = document.getElementById('descForm');
+  const input = document.getElementById('descInput');
+
+  const render = desc => {
+    text.textContent = desc || '＋ add a note about this network (tariff, price, FUP…)';
+    text.classList.toggle('filled', !!desc);
+    window.PAGE.description = desc || '';
+  };
+  const openForm = () => {
+    input.value = window.PAGE.description;
+    view.hidden = true;
+    form.hidden = false;
+    input.focus();
+  };
+  const closeForm = () => {
+    form.hidden = true;
+    view.hidden = false;
+  };
+
+  render(window.PAGE.description);
+  document.getElementById('descEdit').addEventListener('click', openForm);
+  text.addEventListener('click', () => { if (!window.PAGE.description) openForm(); });
+  document.getElementById('descCancel').addEventListener('click', closeForm);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const r = await fetch(`/api/net/${window.PAGE.name}/description`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: input.value}),
+      });
+      if (!r.ok) throw new Error(r.status);
+      render((await r.json()).description);
+      closeForm();
+    } catch (err) {
+      input.setCustomValidity('Saving failed — is the server reachable?');
+      input.reportValidity();
+      setTimeout(() => input.setCustomValidity(''), 2500);
+    }
+  });
+}
+
 async function runSpeedTest() {
   const btn = document.getElementById('runSpeed');
   btn.disabled = true;
@@ -1106,6 +1154,7 @@ async function runSpeedTest() {
 
 function netmonInit() {
   initNoteForm();
+  initNetDesc();
   checkForUpdate();
   document.getElementById('shareRange')?.addEventListener('click', shareRange);
   document.getElementById('runSpeed')?.addEventListener('click', runSpeedTest);

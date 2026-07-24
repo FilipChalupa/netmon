@@ -216,6 +216,26 @@ def test_correlation_logic(page, server):
     assert sorted(clusters[0]["nets"]) == ["A", "B"]   # C alone, local ignored
 
 
+def test_network_description_roundtrip(page, server):
+    """Edit the per-network description in place; it persists across reload."""
+    page.goto(server + "/net/e2e")
+    page.wait_for_selector("#descView")
+    page.click("#descEdit")
+    page.fill("#descInput", "FTTH 500/50 · 449 CZK/month · no FUP")
+    page.click("#descForm button[type=submit]")
+    page.wait_for_function(
+        "document.getElementById('descText').textContent.includes('449')")
+    page.reload()
+    page.wait_for_function(
+        "document.getElementById('descText').textContent.includes('no FUP')")
+    # clearing restores the muted add-hint
+    page.click("#descEdit")
+    page.fill("#descInput", "")
+    page.click("#descForm button[type=submit]")
+    page.wait_for_function(
+        "document.getElementById('descText').textContent.includes('add a note')")
+
+
 def test_run_speed_button_feedback(page, server):
     """No monitor is configured in the fixture → the proxy answers 404 and
     the button must surface the failure instead of pretending."""

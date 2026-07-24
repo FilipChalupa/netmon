@@ -3,6 +3,18 @@
 {% block content %}
 <h1>{{ net.label }}</h1>
 <div class="sub" id="period">Connection quality on the “{{ net.label }}” network</div>
+<div class="netdesc">
+  <div id="descView">
+    <span id="descText"></span>
+    <button id="descEdit" class="descbtn" title="Edit the network description">✎</button>
+  </div>
+  <form id="descForm" hidden>
+    <input type="text" id="descInput" maxlength="500"
+           placeholder="e.g. FTTH 500/50 · 449 Kč/month · no FUP · ISP support 800 123 456">
+    <button type="submit">Save</button>
+    <button type="button" id="descCancel">Cancel</button>
+  </form>
+</div>
 {% include "_range.html" %}
 <div class="cards" id="cards"></div>
 <div class="panel"><h2>⏱️ Measurement uptime</h2><div id="uptime"><p class="empty">Loading…</p></div></div>
@@ -35,7 +47,8 @@
 {% block scripts %}
 <script>
 window.PAGE = {type: 'network', name: {{ net.name | tojson }}, t0: {{ t0 }}, t1: {{ t1 }},
-               range: {{ range | tojson }}};
+               range: {{ range | tojson }},
+               description: {{ (net.description or '') | tojson }}};
 netmonInit();
 </script>
 {% endblock %}

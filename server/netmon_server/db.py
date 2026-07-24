@@ -15,7 +15,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS networks(
     id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
-    label TEXT
+    label TEXT,
+    description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS latency(
@@ -203,6 +204,10 @@ def init_db(path: str) -> None:
         for col in ("up_mbps", "idle_rtt_ms", "loaded_rtt_ms"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE speed ADD COLUMN {col} REAL")
+        # migration: per-network free-text description (price, FUP, ISP…)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(networks)")}
+        if "description" not in cols:
+            conn.execute("ALTER TABLE networks ADD COLUMN description TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -222,6 +227,16 @@ def get_or_create_network(conn: sqlite3.Connection, name: str, label: str | None
 
 def get_network(conn: sqlite3.Connection, name: str):
     return conn.execute("SELECT * FROM networks WHERE name=?", (name,)).fetchone()
+
+
+def set_network_description(conn: sqlite3.Connection, name: str,
+                            text: str | None) -> bool:
+    """Free-text note shown on the network page (tariff, FUP, ISP contact…).
+    Empty/whitespace clears it. Returns False for an unknown network."""
+    text = (text or "").strip() or None
+    cur = conn.execute("UPDATE networks SET description=? WHERE name=?", (text, name))
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:

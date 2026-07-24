@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from .. import VERSION
 from ..aggregate import (attach_diags, daily_heatmap, latency_series, pick_bucket,
                          reach_series, speed_points, summary)
-from ..db import connect, get_network
+from ..db import connect, get_network, set_network_description
 from ..events import derive_events, derive_reach_events, merge_events
 from ..notes import create_note, delete_note, list_notes
 from ..timerange import resolve_range
@@ -56,6 +56,7 @@ def networks(request: Request):
             out.append({
                 "name": net["name"],
                 "label": net["label"],
+                "description": net["description"],
                 "sync": {
                     "last_ok_at": last_ok,
                     "last_error": st["last_error"] if st else None,
@@ -121,6 +122,24 @@ def net_heatmap(request: Request, name: str, days: int = 365):
     try:
         return {"days": daily_heatmap(conn, _net_id(conn, name), cfg.tz,
                                       min(max(days, 1), 2 * 366))}
+    finally:
+        conn.close()
+
+
+class DescriptionIn(BaseModel):
+    text: str = ""
+
+
+@router.put("/net/{name}/description")
+def net_description(request: Request, name: str, body: DescriptionIn):
+    """Free-text note about the network itself (tariff, price, FUP, ISP
+    contact…) shown on its detail page. Empty text clears it."""
+    text = body.text.strip()[:500]
+    conn = _open(request)
+    try:
+        if not set_network_description(conn, name, text):
+            raise HTTPException(404, f"Unknown network: {name}")
+        return {"ok": True, "description": text or None}
     finally:
         conn.close()
 

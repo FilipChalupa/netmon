@@ -33,9 +33,12 @@ TZ = ZoneInfo("Europe/Prague")
 rng = random.Random(42)
 
 NETS = {
-    "home":    {"label": "Home (fiber)",    "gw": 1.2, "pub": 8.0,  "down": 520, "idle": 8},
-    "cottage": {"label": "Cottage (LTE)",   "gw": 2.5, "pub": 42.0, "down": 55,  "idle": 40},
-    "parents": {"label": "Parents (DSL)",   "gw": 1.8, "pub": 16.0, "down": 95,  "idle": 14},
+    "home":    {"label": "Home (fiber)",    "gw": 1.2, "pub": 8.0,  "down": 520, "idle": 8,
+                "desc": "FTTH 500/50 · 449 CZK/month · no FUP · ISP support 800 123 456"},
+    "cottage": {"label": "Cottage (LTE)",   "gw": 2.5, "pub": 42.0, "down": 55,  "idle": 40,
+                "desc": "LTE modem on the roof · 349 CZK/month · FUP 300 GB, then 10 Mbit/s"},
+    "parents": {"label": "Parents (DSL)",   "gw": 1.8, "pub": 16.0, "down": 95,  "idle": 14,
+                "desc": "VDSL 100/10 · 399 CZK/month"},
 }
 # ISP outage on home: both public targets dark, gateway fine
 OUTAGE_H = (14 * 3600 + 2 * 60, 14 * 3600 + 5 * 60 + 20)
@@ -54,6 +57,7 @@ def seed(db_path: str) -> None:
 
     for name, p in NETS.items():
         nid = get_or_create_network(conn, name, p["label"])
+        conn.execute("UPDATE networks SET description=? WHERE id=?", (p["desc"], nid))
         lat, reach, beats, speed = [], [], [], []
 
         def rtt(base, t):

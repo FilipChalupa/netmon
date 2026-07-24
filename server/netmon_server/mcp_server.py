@@ -61,7 +61,8 @@ def _bounds(range_: str, date: str | None, start: str | None,
 
 @mcp.tool()
 def list_networks() -> list[dict]:
-    """All monitored networks with their labels and monitor sync state."""
+    """All monitored networks with their labels, the user's free-text
+    description (tariff, price, FUP…) and monitor sync state."""
     conn = _conn()
     try:
         out = []
@@ -72,6 +73,7 @@ def list_networks() -> list[dict]:
             out.append({
                 "name": net["name"],
                 "label": net["label"],
+                "description": net["description"],
                 "monitor_online": bool(last_ok and time.time() - last_ok < 180),
                 "last_sync_iso": (datetime.datetime.fromtimestamp(last_ok).isoformat(
                     timespec="seconds") if last_ok else None),

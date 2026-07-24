@@ -26,6 +26,15 @@
   a.cardlink{display:block;color:inherit;transition:border-color .15s,box-shadow .15s,transform .15s}
   a.cardlink:hover,a.cardlink:focus-visible{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 6px 18px rgba(56,189,248,.14)}
   a.cardlink:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .netdesc{margin:-14px 0 20px;font-size:14px}
+  .netdesc #descText{color:var(--mut);white-space:pre-wrap;overflow-wrap:anywhere}
+  .netdesc #descText.filled{color:var(--fg)}
+  .descbtn{background:none;border:0;color:var(--mut);cursor:pointer;font-size:13px;padding:2px 6px;opacity:.7}
+  .descbtn:hover{opacity:1;color:var(--accent)}
+  .netdesc form:not([hidden]){display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .netdesc input{flex:1;min-width:260px;background:var(--card);border:1px solid #334155;border-radius:8px;padding:7px 10px;color:var(--fg);font:inherit}
+  .netdesc button[type=submit]{background:var(--accent);color:#0f172a;font-weight:600;border:0;border-radius:8px;padding:7px 14px;cursor:pointer;font:inherit}
+  .netdesc #descCancel{background:var(--card);border:1px solid #334155;border-radius:8px;padding:6px 12px;color:var(--mut);cursor:pointer;font:inherit}
   .card h3{margin:0 0 10px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
   .card h3 a{color:inherit}
   .metric{display:flex;justify-content:space-between;margin:4px 0;font-size:14px}

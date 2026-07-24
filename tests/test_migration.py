@@ -107,3 +107,28 @@ def test_server_db_migration_is_idempotent(tmp_path):
     init_db(path)
     init_db(path)
     assert set(NEW_COLUMNS) <= _columns(path)
+
+
+def test_server_networks_gains_description(tmp_path):
+    from netmon_server.db import set_network_description
+
+    path = str(tmp_path / "server.db")
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE networks(id INTEGER PRIMARY KEY, "
+                 "name TEXT UNIQUE NOT NULL, label TEXT)")   # 2.5 shape
+    conn.execute("INSERT INTO networks(name, label) VALUES('home', 'Home')")
+    conn.commit()
+    conn.close()
+
+    init_db(path)
+    conn = connect(path)
+    try:
+        assert set_network_description(conn, "home", "  FTTH 500/50, no FUP  ")
+        assert conn.execute("SELECT description FROM networks WHERE name='home'")\
+            .fetchone()["description"] == "FTTH 500/50, no FUP"
+        assert set_network_description(conn, "home", "   ")   # clears
+        assert conn.execute("SELECT description FROM networks WHERE name='home'")\
+            .fetchone()["description"] is None
+        assert not set_network_description(conn, "nope", "x")
+    finally:
+        conn.close()
