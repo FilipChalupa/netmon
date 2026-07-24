@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import datetime
+import random
 import threading
 import time
 
@@ -128,7 +129,11 @@ def speed_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
         if not stop.is_set() or mbps is not None:
             db.insert_speed(time.time(), now_iso(), mbps, bytes_, seconds, code,
                             up_mbps)
-        stop.wait(cfg.speed_interval)
+        # ±10 % jitter (max ±5 min): monitors that booted together (power
+        # outage) would otherwise saturate a shared uplink at the same moment
+        # forever; drifting the cadence apart costs nothing
+        jitter = min(cfg.speed_interval * 0.1, 300.0)
+        stop.wait(cfg.speed_interval + random.uniform(-jitter, jitter))
 
 
 def heartbeat_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
