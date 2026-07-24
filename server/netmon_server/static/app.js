@@ -431,11 +431,14 @@ function renderCards(sum) {
       </div>`);
   });
   if (sum.speed.n) {
+    const up = sum.speed.up_avg != null ? `
+        <div class="metric"><span>⬆ upload avg</span><span class="v">${sum.speed.up_avg.toFixed(0)} Mbit/s</span></div>
+        <div class="metric"><span>⬆ min / max</span><span class="v">${sum.speed.up_min.toFixed(0)} / ${sum.speed.up_max.toFixed(0)}</span></div>` : '';
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
-        <h3>speed ⬇</h3>
-        <div class="big">${sum.speed.avg.toFixed(0)} <span style="font-size:14px;color:var(--mut)">Mbit/s avg</span></div>
-        <div class="metric"><span>min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>
+        <h3>speed ⬇⬆</h3>
+        <div class="big">${sum.speed.avg.toFixed(0)} <span style="font-size:14px;color:var(--mut)">Mbit/s ⬇ avg</span></div>
+        <div class="metric"><span>⬇ min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>${up}
         <div class="metric"><span>tests</span><span class="v">${sum.speed.n}</span></div>
       </div>`);
   }
@@ -786,12 +789,21 @@ async function pageNetwork() {
     rchDs('TLS', rch.tls, '#fb7185'),
   ], 'ms', overlays);
 
-  lineChart('spdChart', labels, [{
+  const spdSets = [{
     label: 'download', data: onGrid(grid, bucket, quantize(spd.ts, bucket), spd.mbps),
     borderColor: '#38bdf8',
     backgroundColor: 'rgba(56,189,248,.15)', borderWidth: 2, tension: .3,
     fill: true, pointRadius: 3, spanGaps: true,
-  }], 'Mbit/s', overlays);
+  }];
+  if ((spd.up || []).some(v => v != null)) {
+    spdSets.push({
+      label: 'upload', data: onGrid(grid, bucket, quantize(spd.ts, bucket), spd.up),
+      borderColor: '#a78bfa',
+      backgroundColor: 'rgba(167,139,250,.15)', borderWidth: 2, tension: .3,
+      fill: true, pointRadius: 3, spanGaps: true,
+    });
+  }
+  lineChart('spdChart', labels, spdSets, 'Mbit/s', overlays);
 
   // the year heatmap aggregates a lot of history — load it once, after the charts
   if (!window.$heatmapLoaded) {
@@ -867,7 +879,7 @@ async function pageDashboard() {
         <h3><a href="/net/${n.name}">${n.label}</a> ${statePill}</h3>
         <div class="metric"><span>Loss (internet)</span><span class="pill ${lossCls(worstLoss)}">${worstLoss.toFixed(2)}%</span></div>
         <div class="metric"><span>Latency avg</span><span class="v">${pub && pub.avg != null ? pub.avg.toFixed(1) + ' ms' : '—'}</span></div>
-        <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' Mbit/s' : '—'}</span></div>
+        <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' ⬇' + (s.speed.up_last != null ? ' / ' + s.speed.up_last.toFixed(0) + ' ⬆' : '') + ' Mbit/s' : '—'}</span></div>
         <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
         <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
         <div class="sparkwrap"><canvas class="spark" id="spark-${n.name}"></canvas><span>last 24 h</span></div>
@@ -944,14 +956,23 @@ async function pageCompare() {
   lineChart('cmpLat', labels, ds(s => mkSeries(s, t => t.rtt)), 'ms', overlays);
   lineChart('cmpLoss', labels, ds(s => mkSeries(s, t => t.loss)), '% loss', overlays);
   lineChart('cmpSpd', labels,
-    nets.map((n, i) => {
+    nets.flatMap((n, i) => {
       const s = series[i];
-      if (!s) return null;
-      return {label: netLabel(n),
+      if (!s) return [];
+      const sets = [{label: netLabel(n) + ' ⬇',
               data: onGrid(grid, bucket, quantize(s.speed.ts, bucket), s.speed.mbps),
               borderColor: colorForNet(i), backgroundColor: colorForNet(i),
-              borderWidth: 2, tension: .3, pointRadius: 3, spanGaps: true};
-    }).filter(Boolean), 'Mbit/s', overlays);
+              borderWidth: 2, tension: .3, pointRadius: 3, spanGaps: true}];
+      if ((s.speed.up || []).some(v => v != null)) {
+        // upload dashed, in the network's color, so the pairs read together
+        sets.push({label: netLabel(n) + ' ⬆',
+              data: onGrid(grid, bucket, quantize(s.speed.ts, bucket), s.speed.up),
+              borderColor: colorForNet(i), backgroundColor: colorForNet(i),
+              borderDash: [6, 4], borderWidth: 1.6, tension: .3,
+              pointRadius: 2, spanGaps: true});
+      }
+      return sets;
+    }), 'Mbit/s', overlays);
 }
 
 /* Views whose range ends "now" quietly re-fetch every minute while visible,

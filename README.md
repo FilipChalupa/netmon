@@ -94,11 +94,12 @@ Notes for (unprivileged) LXC containers:
 Configuration (`monitor.ini`): ping targets (`gateway=auto` = default-route
 detection), intervals (ping 2 s, reach 30 s, speed hourly, heartbeat 1/min),
 API port, token, local data retention (90 days). Data volume: the hourly
-speed test downloads ~1.2 GB/day; on a constrained link lower `speed_bytes`
-or increase `speed_interval`. On fast lines a test finishing under
-`speed_min_seconds` (3 s) is automatically re-measured once with a larger
-payload (up to `speed_max_bytes`, 200 MB) so TCP ramp-up doesn't
-underestimate the result.
+speed test downloads ~1.2 GB/day and uploads ~0.5 GB/day; on a constrained
+link lower `speed_bytes`/`upload_bytes` (`upload_bytes = 0` disables the
+upload leg) or increase `speed_interval`. On fast lines a test finishing
+under `speed_min_seconds` (3 s) is automatically re-measured once with a
+larger payload (up to `speed_max_bytes`, 200 MB down / `upload_max_bytes`,
+100 MB up) so TCP ramp-up doesn't underestimate the result.
 
 ### Network connectivity (Tailscale)
 
@@ -211,7 +212,7 @@ Disable with `NETMON_ALERTS=0`.
 | ping `gateway` (auto from default route) | 2 s | local link health — any loss = cable/switch/router |
 | ping `quad9` (9.9.9.9) + `google` (8.8.8.8) | 2 s | internet via two independent paths |
 | reach — DNS/TCP/TLS against `generate_204` | 30 s | "ping works but the internet doesn't" (DNS, dropped traffic) |
-| speed — 50 MB download from Cloudflare | 1 h | speed variation (peak vs. night) |
+| speed — 50 MB download + 20 MB upload to Cloudflare | 1 h | speed variation (peak vs. night), both directions |
 | heartbeat | 60 s | when measuring wasn't running at all (coverage, crash vs. controlled stop) |
 | public IP (api.ipify.org, stored only on change) | 15 min | ISP identification via rDNS; IP changes often coincide with outages |
 
@@ -278,9 +279,6 @@ per-local-day aggregation.
 
 ## TODO / ideas
 
-- **Upload speed measurement** — the speed test is download-only (carried
-  over from the bash version). Cloudflare's `__up` endpoint could measure
-  upload too; useful for ISP complaints.
 - **Server DB backup** — monitors buffer only `retention_days` (90) of
   data, so the server SQLite on the Coolify volume is the only long-term
   copy. If the history matters, enable a volume backup in Coolify (or a

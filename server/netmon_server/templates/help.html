@@ -76,15 +76,18 @@ Intervals and targets below are the defaults — every monitor can override them
 </div>
 
 <div class="panel">
-  <h2>⬇️ Download speed</h2>
+  <h2>⬇️⬆️ Download &amp; upload speed</h2>
   <p>Every <b>hour</b> the monitor downloads a test file from
   <code>speed.cloudflare.com</code> (default <b>50&nbsp;MB</b>) over a single HTTPS
   connection and reports <i>bytes&nbsp;×&nbsp;8&nbsp;/&nbsp;seconds</i> in Mbit/s —
-  including DNS, connection setup and TLS, like a real download.</p>
-  <p><b>Adaptive sizing:</b> if the file finishes in under <b>3&nbsp;s</b>, the line is fast
+  including DNS, connection setup and TLS, like a real download. Right after that it
+  uploads a payload (default <b>20&nbsp;MB</b>) to the same service and reports the
+  upload speed the same way.</p>
+  <p><b>Adaptive sizing:</b> if a test finishes in under <b>3&nbsp;s</b>, the line is fast
   enough that TCP ramp-up dominates and the result underestimates reality. The monitor then
-  immediately re-measures once with a payload sized for roughly a 6&nbsp;s download
-  (capped at <b>200&nbsp;MB</b>) and stores that result instead.</p>
+  immediately re-measures once with a payload sized for roughly a 6&nbsp;s transfer
+  (capped at <b>200&nbsp;MB</b> down / <b>100&nbsp;MB</b> up) and stores that result
+  instead.</p>
   <p>Things to keep in mind when reading the chart: it's one TCP stream (multi-stream
   tests like Ookla can read higher), and it shares the line with whatever the household is
   doing — a dip during the evening Netflix hour may be your own traffic, not the ISP.
