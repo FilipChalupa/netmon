@@ -56,8 +56,12 @@ def _net_text(label: str, s: dict, notes: list[dict] = ()) -> str:
                      f"{avg:>8} {mn:>8} {mx:>8}")
     sp = s["speed"]
     if sp["n"]:
-        lines.append(f"Speed: {sp['n']} tests, avg {sp['avg']:.0f} Mbit/s "
-                     f"(min {sp['min']:.0f} / max {sp['max']:.0f})")
+        line = (f"Speed: {sp['n']} tests, down avg {sp['avg']:.0f} Mbit/s "
+                f"(min {sp['min']:.0f} / max {sp['max']:.0f})")
+        if sp.get("up_avg") is not None:
+            line += (f", up avg {sp['up_avg']:.0f} Mbit/s "
+                     f"(min {sp['up_min']:.0f} / max {sp['up_max']:.0f})")
+        lines.append(line)
     pub = s.get("pubip") or {}
     if pub.get("current"):
         cur = pub["current"]
@@ -116,8 +120,11 @@ def _net_html(label: str, day: str, s: dict, notes: list[dict] = ()) -> str:
         for g in u["gaps"]) or '<tr><td colspan="4">No interruptions 🎉</td></tr>'
 
     sp = s["speed"]
-    speed_line = (f"{sp['n']} tests, avg {sp['avg']:.0f} Mbit/s (min {sp['min']:.0f} / "
+    speed_line = (f"{sp['n']} tests, ⬇ avg {sp['avg']:.0f} Mbit/s (min {sp['min']:.0f} / "
                   f"max {sp['max']:.0f})") if sp["n"] else "no measurements"
+    if sp["n"] and sp.get("up_avg") is not None:
+        speed_line += (f" · ⬆ avg {sp['up_avg']:.0f} Mbit/s (min {sp['up_min']:.0f} / "
+                       f"max {sp['up_max']:.0f})")
     coverage_line = (f"{u['coverage']:.1f} % (downtime {_fmt_dur(u['down_s'])})"
                      if u["coverage"] is not None else "—")
     pub = s.get("pubip") or {}

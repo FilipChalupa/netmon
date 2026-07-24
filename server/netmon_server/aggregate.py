@@ -82,8 +82,9 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
                  t0: float, t1: float) -> dict:
     """Speed — always raw points (hourly, no bucketing needed)."""
     rows = conn.execute(
-        "SELECT ts_epoch, down_mbps FROM speed "
-        "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? AND down_mbps IS NOT NULL "
+        "SELECT ts_epoch, down_mbps, up_mbps FROM speed "
+        "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
+        "AND (down_mbps IS NOT NULL OR up_mbps IS NOT NULL) "
         "ORDER BY ts_epoch",
         (network_id, t0, t1),
     ).fetchall()
@@ -95,6 +96,7 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
     return {
         "ts": [r["ts_epoch"] for r in rows],
         "mbps": [r["down_mbps"] for r in rows],
+        "up": [r["up_mbps"] for r in rows],
         "fails": fails,
     }
 
@@ -256,13 +258,15 @@ def summary(conn: sqlite3.Connection, network_id: int,
 
     spd = conn.execute(
         "SELECT COUNT(*) AS n, AVG(down_mbps) AS avg, MIN(down_mbps) AS min, "
-        "       MAX(down_mbps) AS max "
+        "       MAX(down_mbps) AS max, "
+        "       AVG(up_mbps) AS up_avg, MIN(up_mbps) AS up_min, "
+        "       MAX(up_mbps) AS up_max "
         "FROM speed WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
         "AND down_mbps IS NOT NULL",
         (network_id, t0, t1),
     ).fetchone()
     last_spd = conn.execute(
-        "SELECT down_mbps, ts_iso FROM speed "
+        "SELECT down_mbps, up_mbps, ts_iso FROM speed "
         "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? AND down_mbps IS NOT NULL "
         "ORDER BY ts_epoch DESC LIMIT 1",
         (network_id, t0, t1),
@@ -286,7 +290,11 @@ def summary(conn: sqlite3.Connection, network_id: int,
             "avg": round(spd["avg"], 1) if spd["avg"] is not None else None,
             "min": round(spd["min"], 1) if spd["min"] is not None else None,
             "max": round(spd["max"], 1) if spd["max"] is not None else None,
+            "up_avg": round(spd["up_avg"], 1) if spd["up_avg"] is not None else None,
+            "up_min": round(spd["up_min"], 1) if spd["up_min"] is not None else None,
+            "up_max": round(spd["up_max"], 1) if spd["up_max"] is not None else None,
             "last": last_spd["down_mbps"] if last_spd else None,
+            "up_last": last_spd["up_mbps"] if last_spd else None,
             "last_at": last_spd["ts_iso"] if last_spd else None,
         },
         "uptime": uptime_panel(conn, network_id, t0, t1),

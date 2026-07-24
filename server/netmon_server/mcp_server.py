@@ -85,7 +85,7 @@ def list_networks() -> list[dict]:
 def get_summary(network: str, range: str = "day", date: str | None = None,
                 start: str | None = None, end: str | None = None) -> dict:
     """Full quality summary for a network and time range: per-target latency
-    and packet loss, download speed stats, measurement coverage, outage
+    and packet loss, download/upload speed stats, measurement coverage, outage
     events, public IP (with changes) and the events summary.
 
     Use range=day|week|24h|48h|all (+ optional date=YYYY-MM-DD for day/week),
@@ -104,8 +104,9 @@ def get_summary(network: str, range: str = "day", date: str | None = None,
 @mcp.tool()
 def get_speed_history(network: str, range: str = "week", date: str | None = None,
                       start: str | None = None, end: str | None = None) -> dict:
-    """Individual download speed tests (hourly points) in the range:
-    parallel arrays ts (epoch seconds) and mbps."""
+    """Individual speed tests (hourly points) in the range: parallel arrays
+    ts (epoch seconds), mbps (download) and up (upload; null where the
+    monitor didn't measure upload)."""
     t0, t1, label = _bounds(range, date, start, end)
     conn = _conn()
     try:

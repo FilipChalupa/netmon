@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS speed(
     bytes INTEGER,
     seconds REAL,
     http_code INTEGER,
+    up_mbps REAL,
     UNIQUE(network_id, src_id)
 );
 CREATE INDEX IF NOT EXISTS idx_speed_net_ts ON speed(network_id, ts_epoch);
@@ -157,7 +158,7 @@ KINDS = ("latency", "reach", "speed", "uptime", "pubip", "diag")
 KIND_INSERT_COLUMNS = {
     "latency": ["network_id", "src_id", "ts_epoch", "ts_iso", "target", "ip", "status", "rtt_ms"],
     "reach": ["network_id", "src_id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],
-    "speed": ["network_id", "src_id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code"],
+    "speed": ["network_id", "src_id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code", "up_mbps"],
     "uptime": ["network_id", "src_id", "ts_epoch", "ts_iso", "event"],
     "pubip": ["network_id", "src_id", "ts_epoch", "ts_iso", "ip"],
     "diag": ["network_id", "src_id", "ts_epoch", "ts_iso", "target", "output"],
@@ -193,6 +194,10 @@ def init_db(path: str) -> None:
         if "kind" not in cols:
             conn.execute("DROP TABLE imports")
             conn.executescript(SCHEMA)
+        # migration: speed.up_mbps arrived with upload tracking (monitor 2.4)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(speed)")}
+        if "up_mbps" not in cols:
+            conn.execute("ALTER TABLE speed ADD COLUMN up_mbps REAL")
         conn.commit()
     finally:
         conn.close()
