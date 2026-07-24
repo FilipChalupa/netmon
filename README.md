@@ -30,6 +30,39 @@ networks at once, with central evaluation and web charts.
   report). Kept as reference; `legacy/events.sh` is used in tests as the
   parity oracle for the outage algorithm.
 
+## Screenshots
+
+*(demo data — regenerate any time with `python docs/screenshots/generate.py`)*
+
+**Dashboard** — today's state of every network: loss, latency, last
+download/upload speed, measurement coverage and a 24 h sparkline with
+outages marked in red.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Network detail** — summary cards (including bufferbloat), derived
+outages with scope (local vs. internet/ISP), notes pinned to a moment,
+and the latency chart with note markers.
+
+![Network detail](docs/screenshots/network-detail.png)
+
+**Speed & latency under load** — hourly download/upload tests and the
+bufferbloat chart: idle ping vs. ping while the line is saturated. The
+lunchtime spike here is what a "the internet feels broken but speedtest
+looks fine" complaint looks like.
+
+![Speed and bufferbloat](docs/screenshots/speed-bufferbloat.png)
+
+**Network comparison** — several ISPs on one axis: latency, loss and
+speed (dashed = upload).
+
+![Comparison](docs/screenshots/compare.png)
+
+**Year heatmap** — daily internet packet loss, GitHub-style; click a day
+to open it.
+
+![Heatmap](docs/screenshots/heatmap.png)
+
 ## Quick start: single binary (all-in-one)
 
 Download the binary for your OS from
