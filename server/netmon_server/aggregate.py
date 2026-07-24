@@ -82,7 +82,7 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
                  t0: float, t1: float) -> dict:
     """Speed — always raw points (hourly, no bucketing needed)."""
     rows = conn.execute(
-        "SELECT ts_epoch, down_mbps, up_mbps FROM speed "
+        "SELECT ts_epoch, down_mbps, up_mbps, idle_rtt_ms, loaded_rtt_ms FROM speed "
         "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
         "AND (down_mbps IS NOT NULL OR up_mbps IS NOT NULL) "
         "ORDER BY ts_epoch",
@@ -97,6 +97,8 @@ def speed_points(conn: sqlite3.Connection, network_id: int,
         "ts": [r["ts_epoch"] for r in rows],
         "mbps": [r["down_mbps"] for r in rows],
         "up": [r["up_mbps"] for r in rows],
+        "idle_rtt": [r["idle_rtt_ms"] for r in rows],
+        "loaded_rtt": [r["loaded_rtt_ms"] for r in rows],
         "fails": fails,
     }
 
@@ -260,7 +262,9 @@ def summary(conn: sqlite3.Connection, network_id: int,
         "SELECT COUNT(*) AS n, AVG(down_mbps) AS avg, MIN(down_mbps) AS min, "
         "       MAX(down_mbps) AS max, "
         "       AVG(up_mbps) AS up_avg, MIN(up_mbps) AS up_min, "
-        "       MAX(up_mbps) AS up_max "
+        "       MAX(up_mbps) AS up_max, "
+        "       AVG(loaded_rtt_ms - idle_rtt_ms) AS bloat_avg, "
+        "       MAX(loaded_rtt_ms - idle_rtt_ms) AS bloat_max "
         "FROM speed WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
         "AND down_mbps IS NOT NULL",
         (network_id, t0, t1),
@@ -293,6 +297,8 @@ def summary(conn: sqlite3.Connection, network_id: int,
             "up_avg": round(spd["up_avg"], 1) if spd["up_avg"] is not None else None,
             "up_min": round(spd["up_min"], 1) if spd["up_min"] is not None else None,
             "up_max": round(spd["up_max"], 1) if spd["up_max"] is not None else None,
+            "bloat_avg": round(spd["bloat_avg"], 1) if spd["bloat_avg"] is not None else None,
+            "bloat_max": round(spd["bloat_max"], 1) if spd["bloat_max"] is not None else None,
             "last": last_spd["down_mbps"] if last_spd else None,
             "up_last": last_spd["up_mbps"] if last_spd else None,
             "last_at": last_spd["ts_iso"] if last_spd else None,

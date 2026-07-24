@@ -112,23 +112,88 @@ def measure_upload(cfg: Config, stop: threading.Event):
     return up, ub, us, uc
 
 
+def _median(vals: list[float]) -> float | None:
+    if not vals:
+        return None
+    s = sorted(vals)
+    mid = len(s) // 2
+    return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
+
+
+def _bloat_target_ip(cfg: Config) -> str | None:
+    """First public ping target — bufferbloat is about the internet path,
+    the gateway would only show the LAN hop."""
+    return next((ip for _, ip in cfg.targets if ip != "auto"), None)
+
+
+def _idle_rtt(ip: str, timeout: float, stop: threading.Event,
+              samples: int = 5) -> float | None:
+    rtts = []
+    for _ in range(samples):
+        if stop.is_set():
+            break
+        status, rtt = probes.ping_target(ip, timeout)
+        if rtt is not None:
+            rtts.append(rtt)
+    return _median(rtts)
+
+
+class _LoadPinger(threading.Thread):
+    """Pings `ip` in the background while a speed transfer saturates the
+    line; finish() returns the median RTT under load."""
+
+    def __init__(self, ip: str, timeout: float, stop: threading.Event):
+        super().__init__(name="bloat-ping", daemon=True)
+        self.ip = ip
+        self.timeout = timeout
+        self.stop = stop
+        self.rtts: list[float] = []
+        self._done = threading.Event()
+
+    def run(self) -> None:
+        while not self._done.is_set() and not self.stop.is_set():
+            status, rtt = probes.ping_target(self.ip, self.timeout)
+            if rtt is not None:
+                self.rtts.append(rtt)
+            self._done.wait(0.3)
+
+    def finish(self) -> float | None:
+        self._done.set()
+        self.join(timeout=self.timeout + 5)
+        return _median(self.rtts)
+
+
 def measure_speed(cfg: Config, stop: threading.Event):
-    """Download + upload in one round. Returns (down_mbps, bytes, seconds,
-    http_code, up_mbps); bytes/seconds/http_code describe the download leg,
-    up_mbps is None when upload is disabled or failed."""
-    mbps, bytes_, seconds, code = measure_download(cfg, stop)
-    up_mbps = None
-    if cfg.upload_url and cfg.upload_bytes > 0 and not stop.is_set():
-        up_mbps = measure_upload(cfg, stop)[0]
-    return mbps, bytes_, seconds, code, up_mbps
+    """Download + upload in one round, with latency measured before and
+    during the transfers (bufferbloat). Returns (down_mbps, bytes, seconds,
+    http_code, up_mbps, idle_rtt_ms, loaded_rtt_ms); bytes/seconds/http_code
+    describe the download leg, the rest are None when disabled/failed."""
+    ip = _bloat_target_ip(cfg)
+    idle = loaded = None
+    pinger = None
+    if ip is not None and not stop.is_set():
+        idle = _idle_rtt(ip, cfg.ping_timeout, stop)
+        pinger = _LoadPinger(ip, cfg.ping_timeout, stop)
+        pinger.start()
+    try:
+        mbps, bytes_, seconds, code = measure_download(cfg, stop)
+        up_mbps = None
+        if cfg.upload_url and cfg.upload_bytes > 0 and not stop.is_set():
+            up_mbps = measure_upload(cfg, stop)[0]
+    finally:
+        if pinger is not None:
+            loaded = pinger.finish()
+    if mbps is None and up_mbps is None:
+        idle = loaded = None  # nothing saturated the line — no load to measure
+    return mbps, bytes_, seconds, code, up_mbps, idle, loaded
 
 
 def speed_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
     while not stop.is_set():  # first test right at startup, then hourly
-        mbps, bytes_, seconds, code, up_mbps = measure_speed(cfg, stop)
+        mbps, bytes_, seconds, code, up_mbps, idle, loaded = measure_speed(cfg, stop)
         if not stop.is_set() or mbps is not None:
             db.insert_speed(time.time(), now_iso(), mbps, bytes_, seconds, code,
-                            up_mbps)
+                            up_mbps, idle, loaded)
         # ±10 % jitter (max ±5 min): monitors that booted together (power
         # outage) would otherwise saturate a shared uplink at the same moment
         # forever; drifting the cadence apart costs nothing

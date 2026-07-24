@@ -40,7 +40,7 @@ def _post(url):
 def test_run_speed_stores_result(monitor, monkeypatch):
     base, db_path, _ = monitor
     monkeypatch.setattr(mon_server, "measure_speed",
-                        lambda cfg, stop: (123.4, 1_000_000, 1.5, 200, 45.6))
+                        lambda cfg, stop: (123.4, 1_000_000, 1.5, 200, 45.6, 8.0, 31.0))
     status, body = _post(base + "/api/run/speed")
     assert (status, body["status"]) == (202, "started")
 
@@ -48,17 +48,18 @@ def test_run_speed_stores_result(monitor, monkeypatch):
     row = None
     while time.time() < deadline and row is None:
         conn = sqlite3.connect(db_path)
-        row = conn.execute("SELECT down_mbps, up_mbps FROM speed").fetchone()
+        row = conn.execute(
+            "SELECT down_mbps, up_mbps, idle_rtt_ms, loaded_rtt_ms FROM speed").fetchone()
         conn.close()
         time.sleep(0.05)
-    assert row is not None and row[0] == 123.4 and row[1] == 45.6
+    assert row is not None and row == (123.4, 45.6, 8.0, 31.0)
 
 
 def test_second_request_while_running_is_busy(monitor, monkeypatch):
     base, _, _ = monitor
     release = threading.Event()
     monkeypatch.setattr(mon_server, "measure_speed",
-                        lambda cfg, stop: (release.wait(5), None, None, None, 0, None)[1:])
+                        lambda cfg, stop: (release.wait(5), None, None, None, 0, None, None, None)[1:])
     try:
         assert _post(base + "/api/run/speed")[0] == 202
         status, body = _post(base + "/api/run/speed")

@@ -105,8 +105,9 @@ def get_summary(network: str, range: str = "day", date: str | None = None,
 def get_speed_history(network: str, range: str = "week", date: str | None = None,
                       start: str | None = None, end: str | None = None) -> dict:
     """Individual speed tests (hourly points) in the range: parallel arrays
-    ts (epoch seconds), mbps (download) and up (upload; null where the
-    monitor didn't measure upload)."""
+    ts (epoch seconds), mbps (download), up (upload) plus idle_rtt and
+    loaded_rtt (ping ms before vs. during the transfer — their difference
+    is bufferbloat). Nulls where the monitor didn't measure that part."""
     t0, t1, label = _bounds(range, date, start, end)
     conn = _conn()
     try:

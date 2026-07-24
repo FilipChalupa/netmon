@@ -213,6 +213,7 @@ Disable with `NETMON_ALERTS=0`.
 | ping `quad9` (9.9.9.9) + `google` (8.8.8.8) | 2 s | internet via two independent paths |
 | reach — DNS/TCP/TLS against `generate_204` | 30 s | "ping works but the internet doesn't" (DNS, dropped traffic) |
 | speed — 50 MB download + 20 MB upload to Cloudflare | 1 h | speed variation (peak vs. night), both directions |
+| bufferbloat — ping before vs. during the speed test | 1 h | latency under load (queueing in the router/modem) |
 | heartbeat | 60 s | when measuring wasn't running at all (coverage, crash vs. controlled stop) |
 | public IP (api.ipify.org, stored only on change) | 15 min | ISP identification via rDNS; IP changes often coincide with outages |
 

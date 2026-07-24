@@ -28,6 +28,8 @@
 <div class="panel"><h2>Speed — download / upload (Mbit/s)
   <button id="runSpeed" class="runbtn" title="Run a speed test on the monitor right now">▶ run test now</button></h2>
   <canvas id="spdChart"></canvas></div>
+<div class="panel" id="bloatPanel" hidden><h2>Latency under load — bufferbloat (ms)</h2>
+  <canvas id="bloatChart"></canvas></div>
 <div class="panel"><h2>📅 Daily internet loss — last 12 months</h2><div id="heatmap"><p class="empty">Loading…</p></div></div>
 {% endblock %}
 {% block scripts %}

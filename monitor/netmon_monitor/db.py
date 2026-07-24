@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS speed(
     bytes INTEGER,
     seconds REAL,
     http_code INTEGER,
-    up_mbps REAL
+    up_mbps REAL,
+    idle_rtt_ms REAL,
+    loaded_rtt_ms REAL
 );
 CREATE INDEX IF NOT EXISTS idx_speed_ts ON speed(ts_epoch);
 
@@ -80,7 +82,8 @@ CREATE INDEX IF NOT EXISTS idx_diag_ts ON diag(ts_epoch);
 KIND_COLUMNS = {
     "latency": ["id", "ts_epoch", "ts_iso", "target", "ip", "status", "rtt_ms"],
     "reach": ["id", "ts_epoch", "ts_iso", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"],
-    "speed": ["id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code", "up_mbps"],
+    "speed": ["id", "ts_epoch", "ts_iso", "down_mbps", "bytes", "seconds", "http_code",
+              "up_mbps", "idle_rtt_ms", "loaded_rtt_ms"],
     "uptime": ["id", "ts_epoch", "ts_iso", "event"],
     "pubip": ["id", "ts_epoch", "ts_iso", "ip"],
     "diag": ["id", "ts_epoch", "ts_iso", "target", "output"],
@@ -97,10 +100,12 @@ class Db:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(SCHEMA)
-        # migration: speed.up_mbps arrived in 2.4 — older DBs lack the column
+        # migration: up_mbps arrived in 2.4, bufferbloat columns in 2.5 —
+        # older DBs lack them
         cols = {r[1] for r in self._conn.execute("PRAGMA table_info(speed)")}
-        if "up_mbps" not in cols:
-            self._conn.execute("ALTER TABLE speed ADD COLUMN up_mbps REAL")
+        for col in ("up_mbps", "idle_rtt_ms", "loaded_rtt_ms"):
+            if col not in cols:
+                self._conn.execute(f"ALTER TABLE speed ADD COLUMN {col} REAL")
         self._conn.commit()
         self._lock = threading.Lock()
 
@@ -122,10 +127,12 @@ class Db:
         )
 
     def insert_speed(self, ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code,
-                     up_mbps=None):
+                     up_mbps=None, idle_rtt_ms=None, loaded_rtt_ms=None):
         self._write(
-            "INSERT INTO speed(ts_epoch, ts_iso, down_mbps, bytes, seconds, http_code, up_mbps) VALUES(?,?,?,?,?,?,?)",
-            (ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code, up_mbps),
+            "INSERT INTO speed(ts_epoch, ts_iso, down_mbps, bytes, seconds, http_code, "
+            "up_mbps, idle_rtt_ms, loaded_rtt_ms) VALUES(?,?,?,?,?,?,?,?,?)",
+            (ts_epoch, ts_iso, down_mbps, bytes_, seconds, http_code,
+             up_mbps, idle_rtt_ms, loaded_rtt_ms),
         )
 
     def insert_uptime(self, ts_epoch, ts_iso, event):

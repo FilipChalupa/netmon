@@ -62,6 +62,9 @@ def _net_text(label: str, s: dict, notes: list[dict] = ()) -> str:
             line += (f", up avg {sp['up_avg']:.0f} Mbit/s "
                      f"(min {sp['up_min']:.0f} / max {sp['up_max']:.0f})")
         lines.append(line)
+        if sp.get("bloat_avg") is not None:
+            lines.append(f"Bufferbloat: latency under load avg +{sp['bloat_avg']:.0f} ms "
+                         f"(worst +{sp['bloat_max']:.0f} ms)")
     pub = s.get("pubip") or {}
     if pub.get("current"):
         cur = pub["current"]
@@ -125,6 +128,9 @@ def _net_html(label: str, day: str, s: dict, notes: list[dict] = ()) -> str:
     if sp["n"] and sp.get("up_avg") is not None:
         speed_line += (f" · ⬆ avg {sp['up_avg']:.0f} Mbit/s (min {sp['up_min']:.0f} / "
                        f"max {sp['up_max']:.0f})")
+    if sp["n"] and sp.get("bloat_avg") is not None:
+        speed_line += (f" · bufferbloat avg +{sp['bloat_avg']:.0f} ms "
+                       f"(worst +{sp['bloat_max']:.0f} ms)")
     coverage_line = (f"{u['coverage']:.1f} % (downtime {_fmt_dur(u['down_s'])})"
                      if u["coverage"] is not None else "—")
     pub = s.get("pubip") or {}

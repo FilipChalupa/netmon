@@ -68,29 +68,73 @@ def test_no_retry_when_cap_not_above_base(monkeypatch):
     assert len(calls) == 1
 
 
-def test_measure_speed_combines_download_and_upload(monkeypatch):
+def test_measure_speed_combines_download_upload_and_bloat(monkeypatch):
     monkeypatch.setattr(workers.probes, "speed_test",
                         lambda url, max_time=120.0, stop=None:
                         (31.0, 50_000_000, 12.9, 200))
     monkeypatch.setattr(workers.probes, "upload_test",
                         lambda url, size, max_time=120.0, stop=None:
                         (9.5, 20_000_000, 16.8, 200))
+    monkeypatch.setattr(workers.probes, "ping_target",
+                        lambda ip, timeout: ("ok", 10.0))
     cfg = Config()
     out = workers.measure_speed(cfg, threading.Event())
-    assert out == (31.0, 50_000_000, 12.9, 200, 9.5)
+    assert out[:5] == (31.0, 50_000_000, 12.9, 200, 9.5)
+    idle, loaded = out[5], out[6]
+    assert idle == 10.0 and loaded == 10.0
 
 
 def test_measure_speed_upload_disabled(monkeypatch):
     monkeypatch.setattr(workers.probes, "speed_test",
                         lambda url, max_time=120.0, stop=None:
                         (31.0, 50_000_000, 12.9, 200))
+    monkeypatch.setattr(workers.probes, "ping_target",
+                        lambda ip, timeout: ("ok", 10.0))
 
     def boom(*a, **kw):
         raise AssertionError("upload_test must not run when disabled")
     monkeypatch.setattr(workers.probes, "upload_test", boom)
     cfg = Config(upload_bytes=0)
     out = workers.measure_speed(cfg, threading.Event())
-    assert out == (31.0, 50_000_000, 12.9, 200, None)
+    assert out[:5] == (31.0, 50_000_000, 12.9, 200, None)
+
+
+def test_measure_speed_bloat_dropped_when_no_transfer(monkeypatch):
+    """Both transfer legs failed → the line was never saturated, so the
+    idle/loaded RTTs describe nothing and must not be stored."""
+    monkeypatch.setattr(workers.probes, "speed_test",
+                        lambda url, max_time=120.0, stop=None:
+                        (None, None, 30.0, 0))
+    monkeypatch.setattr(workers.probes, "upload_test",
+                        lambda url, size, max_time=120.0, stop=None:
+                        (None, None, 30.0, 0))
+    monkeypatch.setattr(workers.probes, "ping_target",
+                        lambda ip, timeout: ("ok", 10.0))
+    out = workers.measure_speed(Config(), threading.Event())
+    assert out == (None, None, 30.0, 0, None, None, None)
+
+
+def test_measure_speed_no_public_target_skips_bloat(monkeypatch):
+    monkeypatch.setattr(workers.probes, "speed_test",
+                        lambda url, max_time=120.0, stop=None:
+                        (31.0, 50_000_000, 12.9, 200))
+    monkeypatch.setattr(workers.probes, "upload_test",
+                        lambda url, size, max_time=120.0, stop=None:
+                        (9.5, 20_000_000, 16.8, 200))
+
+    def boom(*a, **kw):
+        raise AssertionError("ping_target must not run without a public target")
+    monkeypatch.setattr(workers.probes, "ping_target", boom)
+    cfg = Config(targets=[("gateway", "auto")])
+    out = workers.measure_speed(cfg, threading.Event())
+    assert out == (31.0, 50_000_000, 12.9, 200, 9.5, None, None)
+
+
+def test_median():
+    assert workers._median([]) is None
+    assert workers._median([5.0]) == 5.0
+    assert workers._median([1.0, 9.0]) == 5.0
+    assert workers._median([1.0, 100.0, 3.0]) == 3.0
 
 
 def test_fast_upload_triggers_bigger_retry(monkeypatch):

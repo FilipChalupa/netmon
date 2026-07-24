@@ -25,7 +25,8 @@ PAGE_LIMIT = 5000
 ROW_FIELDS = {
     "latency": ("target", "ip", "status", "rtt_ms"),
     "reach": ("dns_ms", "tcp_ms", "tls_ms", "http_code", "status"),
-    "speed": ("down_mbps", "bytes", "seconds", "http_code", "up_mbps"),
+    "speed": ("down_mbps", "bytes", "seconds", "http_code", "up_mbps",
+              "idle_rtt_ms", "loaded_rtt_ms"),
     "uptime": ("event",),
     "pubip": ("ip",),
     "diag": ("target", "output"),

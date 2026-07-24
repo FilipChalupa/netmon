@@ -73,13 +73,15 @@ def parse_rows(kind: str, path: str, network_id: int):
                 yield (network_id, None, _epoch(ts_iso), ts_iso,
                        _num(row[1]), _num(row[2]), _num(row[3]), _code(row[4]), row[5])
             elif kind == "speed":
-                # timestamp,down_mbps,bytes,seconds,http_code[,up_mbps]
-                # (legacy bash CSVs have no upload column)
+                # timestamp,down_mbps,bytes,seconds,http_code[,up_mbps
+                # [,idle_rtt_ms,loaded_rtt_ms]] — legacy bash CSVs stop at 5
                 if len(row) < 5:
                     continue
                 yield (network_id, None, _epoch(ts_iso), ts_iso,
                        _num(row[1]), _int(row[2]), _num(row[3]), _code(row[4]),
-                       _num(row[5]) if len(row) > 5 else None)
+                       _num(row[5]) if len(row) > 5 else None,
+                       _num(row[6]) if len(row) > 6 else None,
+                       _num(row[7]) if len(row) > 7 else None)
             elif kind == "uptime":
                 # timestamp,event
                 if len(row) < 2:

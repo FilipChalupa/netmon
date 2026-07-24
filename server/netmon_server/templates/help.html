@@ -92,6 +92,11 @@ Intervals and targets below are the defaults — every monitor can override them
   tests like Ookla can read higher), and it shares the line with whatever the household is
   doing — a dip during the evening Netflix hour may be your own traffic, not the ISP.
   The hourly cadence exists to show <i>patterns</i> (peak vs. night), not to benchmark.</p>
+  <p><b>Bufferbloat:</b> around each test the monitor also pings the first public target —
+  a few pings <i>before</i> (idle) and continuously <i>during</i> the transfer (under load).
+  A large jump (say +100&nbsp;ms) means the router/modem queues packets when the line is
+  busy: that's the classic "video call breaks up whenever someone uploads photos" problem,
+  invisible to plain speed numbers. Both medians show in the latency-under-load chart.</p>
 </div>
 
 <div class="panel">

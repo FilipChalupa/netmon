@@ -27,7 +27,8 @@ def monitor(tmp_path):
         mdb.insert_latency(ts, iso, "google", "8.8.8.8", "LOSS", None)
     mdb.insert_uptime(1000.0, "2025-07-01T10:00:00+02:00", "START")
     mdb.insert_reach(1000.0, "2025-07-01T10:00:00+02:00", 4.0, 2.0, 30.0, 204, "ok")
-    mdb.insert_speed(1000.0, "2025-07-01T10:00:00+02:00", 100.5, 1000000, 0.08, 200, 42.5)
+    mdb.insert_speed(1000.0, "2025-07-01T10:00:00+02:00", 100.5, 1000000, 0.08, 200,
+                     42.5, 8.0, 31.0)
 
     cfg = MonitorConfig(network="testnet", port=0, bind="127.0.0.1", token="tok")
     httpd = create_server(cfg, str(tmp_path / "monitor.db"), "2025-07-01T10:00:00+02:00")
@@ -74,8 +75,8 @@ def test_pull_and_cursor(server_conn, monitor):
     assert rows[0]["src_id"] == 1 and rows[-1]["src_id"] == 14
 
     spd = server_conn.execute(
-        "SELECT down_mbps, up_mbps FROM speed").fetchone()
-    assert (spd["down_mbps"], spd["up_mbps"]) == (100.5, 42.5)
+        "SELECT down_mbps, up_mbps, idle_rtt_ms, loaded_rtt_ms FROM speed").fetchone()
+    assert tuple(spd) == (100.5, 42.5, 8.0, 31.0)
 
     cur = server_conn.execute(
         "SELECT kind, last_src_id FROM sync_cursor ORDER BY kind").fetchall()

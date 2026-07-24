@@ -434,11 +434,13 @@ function renderCards(sum) {
     const up = sum.speed.up_avg != null ? `
         <div class="metric"><span>⬆ upload avg</span><span class="v">${sum.speed.up_avg.toFixed(0)} Mbit/s</span></div>
         <div class="metric"><span>⬆ min / max</span><span class="v">${sum.speed.up_min.toFixed(0)} / ${sum.speed.up_max.toFixed(0)}</span></div>` : '';
+    const bloat = sum.speed.bloat_avg != null ? `
+        <div class="metric"><span>bufferbloat avg</span><span class="pill ${sum.speed.bloat_avg > 100 ? 'bad' : sum.speed.bloat_avg > 30 ? 'warn' : 'ok'}">+${sum.speed.bloat_avg.toFixed(0)} ms</span></div>` : '';
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
         <h3>speed ⬇⬆</h3>
         <div class="big">${sum.speed.avg.toFixed(0)} <span style="font-size:14px;color:var(--mut)">Mbit/s ⬇ avg</span></div>
-        <div class="metric"><span>⬇ min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>${up}
+        <div class="metric"><span>⬇ min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>${up}${bloat}
         <div class="metric"><span>tests</span><span class="v">${sum.speed.n}</span></div>
       </div>`);
   }
@@ -804,6 +806,22 @@ async function pageNetwork() {
     });
   }
   lineChart('spdChart', labels, spdSets, 'Mbit/s', overlays);
+
+  // bufferbloat: idle vs. under-load RTT sampled around each speed test;
+  // the panel stays hidden until a monitor actually reports the data
+  const bloatPanel = document.getElementById('bloatPanel');
+  if (bloatPanel && (spd.loaded_rtt || []).some(v => v != null)) {
+    bloatPanel.hidden = false;
+    const bloatDs = (label, data, color) => ({
+      label, data: onGrid(grid, bucket, quantize(spd.ts, bucket), data),
+      borderColor: color, backgroundColor: color, borderWidth: 2, tension: .3,
+      pointRadius: 3, spanGaps: true,
+    });
+    lineChart('bloatChart', labels, [
+      bloatDs('idle', spd.idle_rtt, '#34d399'),
+      bloatDs('under load', spd.loaded_rtt, '#fb923c'),
+    ], 'ms', overlays);
+  }
 
   // the year heatmap aggregates a lot of history — load it once, after the charts
   if (!window.$heatmapLoaded) {
