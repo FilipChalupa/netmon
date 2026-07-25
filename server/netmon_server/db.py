@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS networks(
     id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     label TEXT,
-    description TEXT
+    description TEXT,
+    monitor_version TEXT
 );
 
 CREATE TABLE IF NOT EXISTS latency(
@@ -204,10 +205,12 @@ def init_db(path: str) -> None:
         for col in ("up_mbps", "idle_rtt_ms", "loaded_rtt_ms"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE speed ADD COLUMN {col} REAL")
-        # migration: per-network free-text description (price, FUP, ISP…)
+        # migrations: per-network free-text description (price, FUP, ISP…)
+        # and the monitor version captured during sync
         cols = {r[1] for r in conn.execute("PRAGMA table_info(networks)")}
-        if "description" not in cols:
-            conn.execute("ALTER TABLE networks ADD COLUMN description TEXT")
+        for col in ("description", "monitor_version"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE networks ADD COLUMN {col} TEXT")
         conn.commit()
     finally:
         conn.close()

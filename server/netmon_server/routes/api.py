@@ -57,6 +57,7 @@ def networks(request: Request):
                 "name": net["name"],
                 "label": net["label"],
                 "description": net["description"],
+                "monitor_version": net["monitor_version"],
                 "sync": {
                     "last_ok_at": last_ok,
                     "last_error": st["last_error"] if st else None,

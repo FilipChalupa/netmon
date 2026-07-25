@@ -78,6 +78,11 @@ def test_pull_and_cursor(server_conn, monitor):
         "SELECT down_mbps, up_mbps, idle_rtt_ms, loaded_rtt_ms FROM speed").fetchone()
     assert tuple(spd) == (100.5, 42.5, 8.0, 31.0)
 
+    from netmon_monitor import VERSION as MONITOR_VERSION
+    ver = server_conn.execute(
+        "SELECT monitor_version FROM networks WHERE name='testnet'").fetchone()
+    assert ver["monitor_version"] == MONITOR_VERSION
+
     cur = server_conn.execute(
         "SELECT kind, last_src_id FROM sync_cursor ORDER BY kind").fetchall()
     assert {r["kind"]: r["last_src_id"] for r in cur} == \

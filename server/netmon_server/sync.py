@@ -56,10 +56,27 @@ def _store_page(conn: sqlite3.Connection, kind: str, network_id: int,
     return inserted
 
 
+async def _record_version(conn: sqlite3.Connection, client: httpx.AsyncClient,
+                          mon: MonitorCfg, network_id: int) -> None:
+    """Remember the monitor's version (shown on the dashboard so outdated
+    monitors are visible). Best-effort — never fails the sync."""
+    try:
+        resp = await client.get(f"{mon.url}/api/info", headers=_headers(mon))
+        resp.raise_for_status()
+        version = str(resp.json().get("version", "")).strip()
+    except Exception:
+        return
+    if version:
+        conn.execute("UPDATE networks SET monitor_version=? WHERE id=?",
+                     (version, network_id))
+        conn.commit()
+
+
 async def pull_monitor(conn: sqlite3.Connection, client: httpx.AsyncClient,
                        mon: MonitorCfg) -> int:
     """Pull all new data from one monitor. Returns the number of new rows."""
     network_id = get_or_create_network(conn, mon.name, mon.label)
+    await _record_version(conn, client, mon, network_id)
     total = 0
     for kind in KINDS:
         row = conn.execute(
