@@ -165,6 +165,30 @@ on LAN clients — accepting a route to your own subnet creates a loop.
 4. Web protection: the app has no auth of its own — protect it at the proxy
    level (Traefik basic auth / Cloudflare Access) if the URL is public.
 
+### Backing up the server database
+
+Monitors buffer only `retention_days` (90) of data locally — **the server
+SQLite is the only long-term copy**, so back it up if the history matters.
+Pick one:
+
+- **Coolify volume backup** — enable a scheduled backup of the `/data`
+  volume in the application's settings. Easiest, no extra tooling.
+- **`sqlite3 .backup` cron** on the host — a consistent snapshot even while
+  the server is writing (plain `cp` of a live WAL database is not safe):
+  ```bash
+  # /etc/cron.daily/netmon-backup
+  docker exec <container> sqlite3 /data/netmon.db ".backup /data/netmon-backup.db"
+  rsync /var/lib/docker/volumes/<volume>/_data/netmon-backup.db backup-host:netmon/
+  ```
+  (systemd deployment: `sqlite3 /var/lib/netmon-server/netmon.db ".backup …"`
+  and ship the snapshot wherever your backups live.)
+- **[Litestream](https://litestream.io)** — continuous streaming replication
+  of the SQLite file to S3-compatible storage; best RPO, a bit more setup.
+
+Restore = stop the server, put the snapshot back as `netmon.db` (remove any
+leftover `-wal`/`-shm` files), start the server. Verify occasionally that
+the backup opens: `sqlite3 netmon-backup.db "PRAGMA integrity_check"`.
+
 Locally: `cd server && docker compose up` → http://localhost:8000
 
 Without Docker (development):
@@ -313,10 +337,6 @@ per-local-day aggregation.
 
 ## TODO / ideas
 
-- **Server DB backup** — monitors buffer only `retention_days` (90) of
-  data, so the server SQLite on the Coolify volume is the only long-term
-  copy. If the history matters, enable a volume backup in Coolify (or a
-  `sqlite3 .backup` cron / Litestream).
 - **Long-term DB growth** — latency grows by roughly 400k rows/day for
   three networks (a few GB per year). Charts stay fast thanks to SQL
   bucketing over indexes, but eventually raw pings older than ~90 days
