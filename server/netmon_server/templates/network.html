@@ -25,6 +25,7 @@
     <input type="text" id="noteText" placeholder="What happened? (e.g. router restarted, ISP maintenance…)" required maxlength="500">
     <input type="datetime-local" id="noteTs" required>
     <button type="submit">Add note</button>
+    <button type="button" id="noteCancel" class="sharebtn" hidden>Cancel</button>
     <div class="notenets">
       <span>Applies to:</span>
       {% for n in networks %}

@@ -615,7 +615,9 @@ function renderNotes(notes) {
       : '<span class="pill ok">general</span>';
     return `<tr><td style="white-space:nowrap">${fmtTs(n.ts_epoch, true)}</td>` +
            `<td style="width:100%">${n.text}</td><td>${nets}</td>` +
-           `<td><button class="notedel" data-id="${n.id}" title="Delete note">✕</button></td></tr>`;
+           `<td style="white-space:nowrap">` +
+           `<button class="noteedit" data-id="${n.id}" title="Edit note">✎</button>` +
+           `<button class="notedel" data-id="${n.id}" title="Delete note">✕</button></td></tr>`;
   }).join('');
   el.innerHTML = `<table class="evt"><thead><tr><th>when</th><th>note</th>` +
     `<th>networks</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -624,6 +626,33 @@ function renderNotes(notes) {
     const r = await fetch('/api/notes/' + btn.dataset.id, {method: 'DELETE'});
     if (r.ok) location.reload(); else alert('Delete failed: HTTP ' + r.status);
   }));
+  el.querySelectorAll('.noteedit').forEach(btn => btn.addEventListener('click', () => {
+    const n = notes.find(x => x.id === Number(btn.dataset.id));
+    if (n) enterNoteEdit(n);
+  }));
+}
+
+function enterNoteEdit(n) {
+  const form = document.getElementById('noteForm');
+  if (!form) return;
+  form.dataset.editId = n.id;
+  document.getElementById('noteText').value = n.text;
+  document.getElementById('noteTs').value = epochToLocalInput(n.ts_epoch);
+  const names = new Set(n.networks.map(w => w.name));
+  form.querySelectorAll('.notenets input').forEach(i => { i.checked = names.has(i.value); });
+  form.querySelector('button[type=submit]').textContent = 'Save changes';
+  document.getElementById('noteCancel').hidden = false;
+  form.scrollIntoView({block: 'center', behavior: 'smooth'});
+  document.getElementById('noteText').focus({preventScroll: true});
+}
+
+function exitNoteEdit() {
+  const form = document.getElementById('noteForm');
+  delete form.dataset.editId;
+  document.getElementById('noteText').value = '';
+  document.getElementById('noteTs').value = epochToLocalInput(Date.now() / 1000);
+  form.querySelector('button[type=submit]').textContent = 'Add note';
+  document.getElementById('noteCancel').hidden = true;
 }
 
 function initNoteForm() {
@@ -631,6 +660,7 @@ function initNoteForm() {
   if (!form) return;
   const ts = document.getElementById('noteTs');
   ts.value = epochToLocalInput(Date.now() / 1000);
+  document.getElementById('noteCancel')?.addEventListener('click', exitNoteEdit);
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const body = {
@@ -638,8 +668,10 @@ function initNoteForm() {
       ts_epoch: new Date(ts.value).getTime() / 1000,
       networks: [...form.querySelectorAll('.notenets input:checked')].map(i => i.value),
     };
-    const r = await fetch('/api/notes', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    const editId = form.dataset.editId;
+    const r = await fetch(editId ? '/api/notes/' + editId : '/api/notes', {
+      method: editId ? 'PATCH' : 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
     });
     if (r.ok) location.reload();
     else alert('Saving the note failed: HTTP ' + r.status + ' ' + (await r.text()));

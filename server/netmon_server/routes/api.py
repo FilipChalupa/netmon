@@ -17,7 +17,7 @@ from ..aggregate import (attach_diags, daily_heatmap, latency_series, pick_bucke
                          reach_series, speed_points, summary)
 from ..db import connect, get_network, set_network_description
 from ..events import derive_events, derive_reach_events, merge_events
-from ..notes import create_note, delete_note, list_notes
+from ..notes import create_note, delete_note, list_notes, update_note
 from ..timerange import resolve_range
 
 router = APIRouter(prefix="/api")
@@ -238,6 +238,26 @@ def notes_create(request: Request, note: NoteIn):
     conn = _open(request)
     try:
         return create_note(conn, note.ts_epoch, note.text, note.networks)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    finally:
+        conn.close()
+
+
+class NotePatch(BaseModel):
+    text: str | None = None
+    ts_epoch: float | None = None
+    networks: list[str] | None = None
+
+
+@router.patch("/notes/{note_id}")
+def notes_update(request: Request, note_id: int, patch: NotePatch):
+    conn = _open(request)
+    try:
+        note = update_note(conn, note_id, patch.text, patch.ts_epoch, patch.networks)
+        if note is None:
+            raise HTTPException(404, f"Unknown note: {note_id}")
+        return note
     except ValueError as e:
         raise HTTPException(400, str(e))
     finally:

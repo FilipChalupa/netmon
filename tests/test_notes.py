@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from netmon_server.db import connect, get_or_create_network, init_db
-from netmon_server.notes import create_note, delete_note, list_notes
+from netmon_server.notes import create_note, delete_note, list_notes, update_note
 
 
 @pytest.fixture
@@ -73,6 +73,36 @@ def test_unknown_network_rejected(conn, nets):
         create_note(conn, 1000.0, "text", ["nope"])
     # nothing half-inserted
     assert list_notes(conn, 0, 2000) == []
+
+
+def test_update_patches_only_given_fields(conn, nets):
+    n = create_note(conn, 1000.0, "router restarted", ["home"])
+
+    out = update_note(conn, n["id"], text="router rebooted (typo fix)")
+    assert out["text"] == "router rebooted (typo fix)"
+    assert out["ts_epoch"] == 1000.0
+    assert [w["name"] for w in out["networks"]] == ["home"]
+
+    out = update_note(conn, n["id"], ts_epoch=2000.0)
+    assert out["ts_epoch"] == 2000.0
+    assert out["text"] == "router rebooted (typo fix)"
+
+    out = update_note(conn, n["id"], network_names=["office"])
+    assert [w["name"] for w in out["networks"]] == ["office"]
+
+    out = update_note(conn, n["id"], network_names=[])   # [] = make general
+    assert out["networks"] == []
+
+
+def test_update_rejects_bad_input(conn, nets):
+    n = create_note(conn, 1000.0, "x", [])
+    assert update_note(conn, 9999, text="y") is None
+    with pytest.raises(ValueError):
+        update_note(conn, n["id"], text="   ")
+    with pytest.raises(ValueError):
+        update_note(conn, n["id"], network_names=["nope"])
+    # failed updates left the note untouched
+    assert list_notes(conn, 0, 5000)[0]["text"] == "x"
 
 
 def test_delete_cascades(conn, nets):

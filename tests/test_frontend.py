@@ -216,6 +216,27 @@ def test_correlation_logic(page, server):
     assert sorted(clusters[0]["nets"]) == ["A", "B"]   # C alone, local ignored
 
 
+def test_note_edit_roundtrip(page, server):
+    """✎ prefills the form, PATCH persists, Cancel restores add mode."""
+    page.goto(server + "/net/e2e")
+    page.wait_for_selector(".noteedit")
+    page.click(".noteedit")
+    assert page.input_value("#noteText") == "seeded marker note"
+    assert page.inner_text("#noteForm button[type=submit]") == "Save changes"
+    page.fill("#noteText", "seeded marker note — edited")
+    page.click("#noteForm button[type=submit]")
+    page.wait_for_selector("text=seeded marker note — edited")
+    # form is back in add mode after the reload
+    assert page.inner_text("#noteForm button[type=submit]") == "Add note"
+    assert page.is_hidden("#noteCancel")
+    # cancel restores add mode without saving
+    page.click(".noteedit")
+    page.fill("#noteText", "should be discarded")
+    page.click("#noteCancel")
+    assert page.input_value("#noteText") == ""
+    assert page.inner_text("#noteForm button[type=submit]") == "Add note"
+
+
 def test_csv_export_streams_the_range(server):
     import urllib.error
     import urllib.request

@@ -60,6 +60,36 @@ def list_notes(conn: sqlite3.Connection, t0: float, t1: float,
     return out
 
 
+def update_note(conn: sqlite3.Connection, note_id: int, text: str | None = None,
+                ts_epoch: float | None = None,
+                network_names: list[str] | None = None) -> dict | None:
+    """Patch a note; only the provided fields change. network_names replaces
+    the scope ([] = make it general). Returns None for an unknown note."""
+    row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+    if not row:
+        return None
+    if text is not None:
+        text = text.strip()
+        if not text:
+            raise ValueError("Note text must not be empty")
+        conn.execute("UPDATE notes SET text=? WHERE id=?", (text, note_id))
+    if ts_epoch is not None:
+        conn.execute("UPDATE notes SET ts_epoch=? WHERE id=?", (ts_epoch, note_id))
+    if network_names is not None:
+        net_ids = []
+        for name in network_names:
+            net = conn.execute("SELECT id FROM networks WHERE name=?", (name,)).fetchone()
+            if not net:
+                raise ValueError(f"Unknown network: {name}")
+            net_ids.append(net["id"])
+        conn.execute("DELETE FROM note_networks WHERE note_id=?", (note_id,))
+        conn.executemany("INSERT OR IGNORE INTO note_networks(note_id, network_id) VALUES(?,?)",
+                         [(note_id, i) for i in net_ids])
+    conn.commit()
+    return _note_dict(conn, conn.execute("SELECT * FROM notes WHERE id=?",
+                                         (note_id,)).fetchone())
+
+
 def delete_note(conn: sqlite3.Connection, note_id: int) -> bool:
     cur = conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
     conn.commit()
