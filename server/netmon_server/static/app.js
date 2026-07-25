@@ -1028,6 +1028,25 @@ async function pageCompare() {
       }
       return sets;
     }), 'Mbit/s', overlays);
+
+  // bufferbloat comparison: the per-test latency increase under load —
+  // the number that actually separates ISPs (LTE queues, fiber doesn't)
+  const bloatSets = nets.map((n, i) => {
+    const s = series[i];
+    if (!s) return null;
+    const inc = s.speed.ts.map((_, j) =>
+      s.speed.loaded_rtt?.[j] != null && s.speed.idle_rtt?.[j] != null
+        ? Math.round((s.speed.loaded_rtt[j] - s.speed.idle_rtt[j]) * 10) / 10 : null);
+    if (!inc.some(v => v != null)) return null;
+    return {label: netLabel(n), data: onGrid(grid, bucket, quantize(s.speed.ts, bucket), inc),
+            borderColor: colorForNet(i), backgroundColor: colorForNet(i),
+            borderWidth: 2, tension: .3, pointRadius: 3, spanGaps: true};
+  }).filter(Boolean);
+  const bloatPanel = document.getElementById('cmpBloatPanel');
+  if (bloatPanel && bloatSets.length) {
+    bloatPanel.hidden = false;
+    lineChart('cmpBloat', labels, bloatSets, 'ms', overlays);
+  }
 }
 
 /* Views whose range ends "now" quietly re-fetch every minute while visible,
