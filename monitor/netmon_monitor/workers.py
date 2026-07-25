@@ -189,8 +189,18 @@ def measure_speed(cfg: Config, stop: threading.Event):
 
 
 def speed_loop(cfg: Config, db: Db, stop: threading.Event) -> None:
+    # The first test runs right at startup — often while the network is
+    # still coming up after a boot. A failure then retries quickly (and
+    # quietly: only the final failure is recorded) instead of leaving an
+    # hour-long hole after every power-on.
+    boot_retries = cfg.speed_boot_retries
     while not stop.is_set():  # first test right at startup, then hourly
         mbps, bytes_, seconds, code, up_mbps, idle, loaded = measure_speed(cfg, stop)
+        if mbps is None and boot_retries > 0 and not stop.is_set():
+            boot_retries -= 1
+            stop.wait(cfg.speed_boot_retry_s)
+            continue
+        boot_retries = 0  # success or retries exhausted → normal cadence
         if not stop.is_set() or mbps is not None:
             db.insert_speed(time.time(), now_iso(), mbps, bytes_, seconds, code,
                             up_mbps, idle, loaded)

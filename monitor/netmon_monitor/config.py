@@ -39,6 +39,10 @@ class Config:
     upload_bytes: int = 20_000_000
     upload_url: str = "https://speed.cloudflare.com/__up"
     upload_max_bytes: int = 100_000_000
+    # a failed first test after startup (network still coming up) retries
+    # quickly this many times before falling back to speed_interval
+    speed_boot_retries: int = 3
+    speed_boot_retry_s: float = 120.0
     heartbeat_interval: float = 60.0
     # public IP is checked often but recorded only when it changes
     pubip_interval: float = 900.0
@@ -101,6 +105,8 @@ def load_config(path: str) -> Config:
     cfg.upload_bytes = int(p.get("upload_bytes", cfg.upload_bytes))
     cfg.upload_url = p.get("upload_url", cfg.upload_url).strip()
     cfg.upload_max_bytes = int(p.get("upload_max_bytes", cfg.upload_max_bytes))
+    cfg.speed_boot_retries = int(p.get("speed_boot_retries", cfg.speed_boot_retries))
+    cfg.speed_boot_retry_s = float(p.get("speed_boot_retry_s", cfg.speed_boot_retry_s))
     cfg.heartbeat_interval = float(p.get("heartbeat_interval", cfg.heartbeat_interval))
     cfg.pubip_interval = float(p.get("pubip_interval", cfg.pubip_interval))
     cfg.pubip_url = p.get("pubip_url", cfg.pubip_url).strip()

@@ -130,6 +130,69 @@ def test_measure_speed_no_public_target_skips_bloat(monkeypatch):
     assert out == (31.0, 50_000_000, 12.9, 200, 9.5, None, None)
 
 
+class _DbStub:
+    def __init__(self):
+        self.rows = []
+
+    def insert_speed(self, *args):
+        self.rows.append(args)
+
+
+def _run_speed_loop(monkeypatch, results, cfg):
+    """Drive speed_loop with scripted measure_speed results; stop after the
+    script runs out."""
+    stop = threading.Event()
+    db = _DbStub()
+    seq = iter(results)
+
+    def fake_measure(cfg_, stop_):
+        try:
+            return next(seq)
+        except StopIteration:
+            stop.set()
+            return (None, None, 1.0, 0, None, None, None)
+
+    monkeypatch.setattr(workers, "measure_speed", fake_measure)
+    workers.speed_loop(cfg, db, stop)
+    return db.rows
+
+
+def test_boot_retry_records_only_the_success(monkeypatch):
+    """Two boot-time failures (network still coming up) retry quietly; only
+    the eventual success is stored."""
+    cfg = Config(speed_boot_retries=3, speed_boot_retry_s=0.01, speed_interval=0.01)
+    rows = _run_speed_loop(monkeypatch, [
+        (None, None, 30.0, 0, None, None, None),
+        (None, None, 30.0, 0, None, None, None),
+        (200.0, 50_000_000, 2.0, 200, 20.0, 8.0, 12.0),
+    ], cfg)
+    assert len(rows) == 1
+    assert rows[0][2] == 200.0   # down_mbps of the successful test
+
+
+def test_boot_retry_exhaustion_records_the_failure(monkeypatch):
+    cfg = Config(speed_boot_retries=2, speed_boot_retry_s=0.01, speed_interval=0.01)
+    rows = _run_speed_loop(monkeypatch, [
+        (None, None, 30.0, 0, None, None, None),
+        (None, None, 30.0, 0, None, None, None),
+        (None, None, 30.0, 0, None, None, None),   # retries exhausted → recorded
+    ], cfg)
+    assert len(rows) == 1
+    assert rows[0][2] is None
+
+
+def test_later_failures_do_not_retry(monkeypatch):
+    """The quick retry is a boot-time courtesy only — a mid-day failure is
+    recorded immediately and waits for the normal interval."""
+    cfg = Config(speed_boot_retries=3, speed_boot_retry_s=0.01, speed_interval=0.01)
+    rows = _run_speed_loop(monkeypatch, [
+        (300.0, 50_000_000, 1.5, 200, 30.0, 8.0, 11.0),
+        (None, None, 30.0, 0, None, None, None),
+    ], cfg)
+    assert len(rows) == 2
+    assert rows[0][2] == 300.0 and rows[1][2] is None
+
+
 def test_median():
     assert workers._median([]) is None
     assert workers._median([5.0]) == 5.0
