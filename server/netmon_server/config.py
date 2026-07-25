@@ -30,6 +30,7 @@ class ServerConfig:
     monitors_path: str = "config/monitors.toml"
     tz: str = "Europe/Prague"
     report_hour: int = 3
+    weekly_enabled: bool = True   # Monday weekly digest email (NETMON_WEEKLY=0 off)
     sync_interval: float = 30.0
     ping_interval: float = 2.0   # for outage derivation; monitor's /api/info overrides
     monitors: list[MonitorCfg] = field(default_factory=list)
@@ -70,6 +71,7 @@ def load_config() -> ServerConfig:
         tz=os.environ.get("NETMON_TZ", ServerConfig.tz),
         report_hour=int(os.environ.get("NETMON_REPORT_HOUR", ServerConfig.report_hour)),
         alerts_enabled=os.environ.get("NETMON_ALERTS", "1") != "0",
+        weekly_enabled=os.environ.get("NETMON_WEEKLY", "1") != "0",
         alert_min_outage_s=int(os.environ.get("NETMON_ALERT_MIN_OUTAGE_S",
                                               ServerConfig.alert_min_outage_s)),
         alert_offline_s=int(os.environ.get("NETMON_ALERT_OFFLINE_S",

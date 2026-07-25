@@ -240,6 +240,12 @@ python -m netmon_server.report --date 2026-07-14           # print + save HTML o
 SMTP_DRYRUN=1 python -m netmon_server.report --date 2026-07-14 --send   # .eml to disk
 ```
 
+Every Monday a **weekly digest** follows: one text email with each
+network's week (worst public loss, latency, download/upload averages,
+bufferbloat, outages, coverage) with the previous week alongside every
+number — the trend view for "is this line getting worse?". Disable with
+`NETMON_WEEKLY=0`; manual run: `python -m netmon_server.report --weekly`.
+
 ## Email alerts
 
 With SMTP configured the server also alerts as things happen (checked every

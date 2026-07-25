@@ -204,6 +204,102 @@ def build_report(cfg: ServerConfig, day: datetime.date):
     return subject, text, attachments
 
 
+def _wk_stats(s: dict) -> dict:
+    """Digest metrics from a summary(): worst public loss, mean public
+    latency, speed/bloat averages, outage totals, coverage."""
+    pubs = [t for t in s["targets"] if t["target"] != "gateway"]
+    lats = [t["avg"] for t in pubs if t["avg"] is not None]
+    es = s["events_summary"] or {}
+    return {
+        "loss": max((t["loss"] for t in pubs), default=None),
+        "lat": sum(lats) / len(lats) if lats else None,
+        "down": s["speed"]["avg"],
+        "up": s["speed"].get("up_avg"),
+        "bloat": s["speed"].get("bloat_avg"),
+        "out_n": sum(e["count"] for e in es.values()),
+        "out_s": sum(e["total_s"] for e in es.values()),
+        "cov": s["uptime"]["coverage"],
+    }
+
+
+def _wk_line(label: str, cur, prev, fmt, pct_delta: bool = False) -> str:
+    def f(v):
+        return fmt.format(v) if v is not None else "—"
+    line = f"  {label:<17} {f(cur):>12}   (prev {f(prev)}"
+    if pct_delta and cur is not None and prev:
+        line += f", {(cur - prev) / prev * 100:+.0f} %"
+    return line + ")"
+
+
+def build_weekly(cfg: ServerConfig, monday: datetime.date):
+    """(subject, text) for the week starting `monday`, with the previous
+    week alongside every number. Returns None when nothing measured."""
+    t0, _ = day_bounds(monday, cfg.tz)
+    _, t1 = day_bounds(monday + datetime.timedelta(days=6), cfg.tz)
+    p0, _ = day_bounds(monday - datetime.timedelta(days=7), cfg.tz)
+    sunday = monday + datetime.timedelta(days=6)
+
+    conn = connect(cfg.db_path)
+    try:
+        sections = []
+        for net in conn.execute("SELECT * FROM networks ORDER BY name").fetchall():
+            cur_s = summary(conn, net["id"], t0, t1, cfg.ping_interval,
+                            cfg.alert_reach_fails)
+            prev_s = summary(conn, net["id"], p0, t0, cfg.ping_interval,
+                             cfg.alert_reach_fails)
+            if not cur_s["targets"] and not prev_s["targets"]:
+                continue
+            cur, prev = _wk_stats(cur_s), _wk_stats(prev_s)
+            lines = [f"== {net['label']} =="]
+            if net["description"]:
+                lines.append(f"  ({net['description']})")
+            lines += [
+                _wk_line("internet loss:", cur["loss"], prev["loss"], "{:.2f} %"),
+                _wk_line("latency avg:", cur["lat"], prev["lat"], "{:.1f} ms"),
+                _wk_line("download avg:", cur["down"], prev["down"],
+                         "{:.0f} Mbit/s", pct_delta=True),
+                _wk_line("upload avg:", cur["up"], prev["up"],
+                         "{:.0f} Mbit/s", pct_delta=True),
+                _wk_line("bufferbloat avg:", cur["bloat"], prev["bloat"], "+{:.0f} ms"),
+                f"  {'outages:':<17} {cur['out_n']}× / {_fmt_dur(cur['out_s'])}"
+                f"   (prev {prev['out_n']}× / {_fmt_dur(prev['out_s'])})",
+                _wk_line("coverage:", cur["cov"], prev["cov"], "{:.1f} %"),
+            ]
+            sections.append("\n".join(lines))
+    finally:
+        conn.close()
+    if not sections:
+        return None
+    subject = f"netmon weekly digest {monday.isoformat()} – {sunday.isoformat()}"
+    text = (f"netmon — week {monday.isoformat()} → {sunday.isoformat()} "
+            f"(previous week in brackets)\n\n" + "\n\n".join(sections) + "\n")
+    return subject, text
+
+
+def last_complete_week_monday(today: datetime.date) -> datetime.date:
+    return today - datetime.timedelta(days=today.weekday() + 7)
+
+
+def weekly_due(last_sent_monday: str | None,
+               today: datetime.date) -> datetime.date | None:
+    """Monday of the week to send now, or None when already sent."""
+    monday = last_complete_week_monday(today)
+    if last_sent_monday is None or \
+            datetime.date.fromisoformat(last_sent_monday) < monday:
+        return monday
+    return None
+
+
+def send_weekly_digest(cfg: ServerConfig, monday: datetime.date,
+                       out_dir: str = ".") -> bool:
+    rep = build_weekly(cfg, monday)
+    if rep is None:
+        log.info("Weekly digest %s: no data, not sending anything.", monday)
+        return False
+    subject, text = rep
+    return send_email(subject, text, out_dir=out_dir)
+
+
 def send_daily_report(cfg: ServerConfig, day: datetime.date, out_dir: str = ".") -> bool:
     rep = build_report(cfg, day)
     if rep is None:
@@ -242,6 +338,25 @@ async def report_scheduler(cfg: ServerConfig, stop: asyncio.Event) -> None:
                     continue
                 return
 
+        # weekly digest: once the last complete week (Mon–Sun) is behind us
+        if cfg.weekly_enabled and now.hour >= cfg.report_hour and smtp_configured():
+            conn = connect(cfg.db_path)
+            try:
+                monday = weekly_due(get_meta(conn, "last_weekly_date"), now.date())
+            finally:
+                conn.close()
+            if monday is not None:
+                try:
+                    await asyncio.to_thread(send_weekly_digest, cfg, monday)
+                    conn = connect(cfg.db_path)
+                    try:
+                        set_meta(conn, "last_weekly_date", monday.isoformat())
+                    finally:
+                        conn.close()
+                except Exception:
+                    log.exception("Sending the weekly digest failed — will retry "
+                                  "on the next scheduler pass.")
+
         # sleep until the next run (report_hour), checking stop along the way
         target = datetime.datetime.combine(
             now.date() + datetime.timedelta(days=0 if now.hour < cfg.report_hour else 1),
@@ -255,8 +370,11 @@ async def report_scheduler(cfg: ServerConfig, stop: asyncio.Event) -> None:
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO)
-    ap = argparse.ArgumentParser(description="netmon daily report")
-    ap.add_argument("--date", help="day YYYY-MM-DD (default: yesterday)")
+    ap = argparse.ArgumentParser(description="netmon daily report / weekly digest")
+    ap.add_argument("--date", help="day YYYY-MM-DD (default: yesterday); "
+                                   "with --weekly: any day of the wanted week")
+    ap.add_argument("--weekly", action="store_true",
+                    help="weekly digest instead of the daily report")
     ap.add_argument("--send", action="store_true", help="send by email (otherwise just print)")
     ap.add_argument("--out", default=".", help="directory for SMTP_DRYRUN .eml / HTML files")
     args = ap.parse_args()
@@ -265,6 +383,19 @@ def main() -> int:
     init_db(cfg.db_path)
     day = (datetime.date.fromisoformat(args.date) if args.date
            else datetime.date.today() - datetime.timedelta(days=1))
+
+    if args.weekly:
+        monday = day - datetime.timedelta(days=day.weekday())
+        rep = build_weekly(cfg, monday)
+        if rep is None:
+            print(f"No data for the week of {monday}.")
+            return 1
+        subject, text = rep
+        print(text)
+        if args.send:
+            ok = send_email(subject, text, out_dir=args.out)
+            print("Sent." if ok else "Not sent (SMTP configuration missing).")
+        return 0
 
     rep = build_report(cfg, day)
     if rep is None:
