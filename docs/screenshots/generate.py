@@ -176,10 +176,10 @@ def shoot(base: str) -> None:
 
         page.goto(base + "/compare")
         page.wait_for_function(
-            "!!Chart.getChart(document.getElementById('cmpSpd'))")
+            "!!Chart.getChart(document.getElementById('cmpBloat'))")
         page.wait_for_timeout(800)
         page.screenshot(path=str(HERE / "compare.png"), full_page=True,
-                        clip=clip_of(page, "#cmpLat", "#cmpSpd"))
+                        clip=clip_of(page, "#cmpLat", "#cmpBloat"))
         browser.close()
 
 
