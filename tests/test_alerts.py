@@ -152,11 +152,12 @@ def test_imported_only_network_never_offline(conn, cfg, sent):
     assert alerts.check_once(conn, cfg, time.time()) == []
 
 
-def _speed_tests(conn, nid, t0, count, mbps, step=3600):
+def _speed_tests(conn, nid, t0, count, mbps, step=3600, up=None, idle=None, loaded=None):
     for i in range(count):
         conn.execute(
-            "INSERT INTO speed(network_id, ts_epoch, ts_iso, down_mbps) VALUES(?,?,?,?)",
-            (nid, t0 + i * step, "", mbps))
+            "INSERT INTO speed(network_id, ts_epoch, ts_iso, down_mbps, up_mbps, "
+            "idle_rtt_ms, loaded_rtt_ms) VALUES(?,?,?,?,?,?,?)",
+            (nid, t0 + i * step, "", mbps, up, idle, loaded))
     conn.commit()
 
 
@@ -186,6 +187,63 @@ def test_speed_alert_needs_baseline(conn, cfg, sent):
     nid = get_or_create_network(conn, "testnet", "Test net")
     now = time.time()
     _speed_tests(conn, nid, now - 3 * 3600, 3, 10.0)      # slow, but no baseline
+    assert alerts.check_once(conn, cfg, now) == []
+
+
+def test_upload_degradation_alerts_independently(conn, cfg, sent):
+    """Download stays healthy, upload collapses → exactly one upload alert."""
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 40 * 3600, 30, 500.0, up=50.0)
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 495.0, up=5.0)   # up at 10 %
+
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1 and "upload speed degraded" in subjects[0]
+    assert alerts.check_once(conn, cfg, now) == []   # dedup
+
+    _speed_tests(conn, nid, now - 1500, 5, 500.0, up=48.0, step=300)
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1 and "upload speed" in subjects[0] \
+        and "back to normal" in subjects[0]
+
+
+def test_download_only_rows_never_upload_alert(conn, cfg, sent):
+    """Old monitors leave up_mbps NULL — that must not look like degradation."""
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 40 * 3600, 30, 500.0)
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 490.0)
+    assert alerts.check_once(conn, cfg, now) == []
+
+
+def test_bufferbloat_alert_and_recovery(conn, cfg, sent):
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 500.0, idle=8.0, loaded=160.0)
+
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1 and "bufferbloat" in subjects[0]
+    assert "+152 ms" in subjects[0]
+    assert alerts.check_once(conn, cfg, now) == []   # dedup
+
+    # +75 ms: below the 100 ms alert level but above the 60 ms recovery
+    # level → hysteresis keeps it armed and quiet
+    _speed_tests(conn, nid, now - 1500, 4, 500.0, idle=8.0, loaded=83.0, step=300)
+    assert alerts.check_once(conn, cfg, now) == []
+
+    # settles well below → recovery + re-arm
+    _speed_tests(conn, nid, now - 1200, 8, 500.0, idle=8.0, loaded=20.0, step=120)
+    subjects = alerts.check_once(conn, cfg, now)
+    assert len(subjects) == 1 and "back to normal" in subjects[0]
+    assert alerts.check_once(conn, cfg, now) == []
+
+
+def test_bufferbloat_disabled_by_zero(conn, sent):
+    cfg = ServerConfig(monitors=[MonitorCfg(name="testnet", url="http://x")],
+                       alert_bloat_ms=0)
+    nid = get_or_create_network(conn, "testnet", "Test net")
+    now = time.time()
+    _speed_tests(conn, nid, now - 3 * 3600, 3, 500.0, idle=8.0, loaded=300.0)
     assert alerts.check_once(conn, cfg, now) == []
 
 

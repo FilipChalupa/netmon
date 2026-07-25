@@ -47,6 +47,9 @@ class ServerConfig:
     alert_speed_window_s: int = 6 * 3600   # "recent" = tests in this window
     alert_speed_min_tests: int = 3         # need at least this many recent tests
     alert_speed_min_baseline: int = 24     # and this many baseline tests (~1 day)
+    # bufferbloat: recent median latency increase under load above this
+    # many ms → alert (absolute — calls break at a fixed level). 0 disables.
+    alert_bloat_ms: int = 100
 
 
 # single-mode (all-in-one binary) injects its config here instead of env/toml
@@ -75,6 +78,8 @@ def load_config() -> ServerConfig:
                                              ServerConfig.alert_reach_fails)),
         alert_speed_pct=int(os.environ.get("NETMON_ALERT_SPEED_PCT",
                                            ServerConfig.alert_speed_pct)),
+        alert_bloat_ms=int(os.environ.get("NETMON_ALERT_BLOAT_MS",
+                                          ServerConfig.alert_bloat_ms)),
     )
     if os.path.exists(cfg.monitors_path):
         with open(cfg.monitors_path, "rb") as f:
