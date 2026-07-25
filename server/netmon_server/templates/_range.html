@@ -21,5 +21,16 @@
   </form>
   <button id="shareRange" type="button" class="sharebtn"
           title="Share a link to this exact time range">📤 Share</button>
+  {% if net is defined %}
+  <details class="exportmenu" id="exportMenu">
+    <summary class="sharebtn" title="Download this range as CSV">⬇ CSV</summary>
+    <div class="exportlist">
+      <a data-kind="latency" href="#">Latency — raw pings</a>
+      <a data-kind="reach" href="#">Reachability — DNS/TCP/TLS</a>
+      <a data-kind="speed" href="#">Speed tests</a>
+      <a data-kind="events" href="#">Outages</a>
+    </div>
+  </details>
+  {% endif %}
   <span class="lbl">{{ range_label }}</span>
 </div>

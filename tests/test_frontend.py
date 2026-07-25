@@ -216,6 +216,40 @@ def test_correlation_logic(page, server):
     assert sorted(clusters[0]["nets"]) == ["A", "B"]   # C alone, local ignored
 
 
+def test_csv_export_streams_the_range(server):
+    import urllib.error
+    import urllib.request
+    now = time.time()
+    rng = f"t0={now - 7200}&t1={now}"
+
+    with urllib.request.urlopen(f"{server}/api/net/e2e/export.csv?kind=latency&{rng}") as r:
+        assert 'attachment; filename="netmon-e2e-latency-' in r.headers["Content-Disposition"]
+        lines = r.read().decode().strip().splitlines()
+    assert lines[0] == "ts_iso,ts_epoch,target,status,rtt_ms"
+    assert len(lines) > 1000   # an hour of seeded pings
+
+    body = urllib.request.urlopen(
+        f"{server}/api/net/e2e/export.csv?kind=events&{rng}").read().decode()
+    assert body.splitlines()[0] == "start_iso,end_iso,duration_s,scope,note"
+    assert len(body.strip().splitlines()) == 2   # the seeded 2-min outage
+
+    for url, code in ((f"{server}/api/net/e2e/export.csv?kind=bogus&{rng}", 400),
+                      (f"{server}/api/net/nope/export.csv?kind=speed&{rng}", 404)):
+        try:
+            urllib.request.urlopen(url)
+            raise AssertionError("expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == code
+
+
+def test_export_menu_builds_links_for_visible_range(page, server):
+    page.goto(server + "/net/e2e")
+    page.wait_for_selector("#exportMenu")
+    page.click("#exportMenu summary")
+    href = page.get_attribute("#exportMenu a[data-kind=speed]", "href")
+    assert "/api/net/e2e/export.csv?kind=speed&t0=" in href
+
+
 def test_network_description_roundtrip(page, server):
     """Edit the per-network description in place; it persists across reload."""
     page.goto(server + "/net/e2e")

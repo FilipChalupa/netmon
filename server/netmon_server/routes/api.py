@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import csv
+import datetime
+import io
 import time
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .. import VERSION
@@ -125,6 +128,74 @@ def net_heatmap(request: Request, name: str, days: int = 365):
                                       min(max(days, 1), 2 * 366))}
     finally:
         conn.close()
+
+
+# raw-data exports: kind → (SQL over [network_id, t0, t1], CSV columns)
+EXPORT_KINDS = {
+    "latency": ("SELECT ts_iso, ts_epoch, target, status, rtt_ms FROM latency "
+                "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
+                ["ts_iso", "ts_epoch", "target", "status", "rtt_ms"]),
+    "reach": ("SELECT ts_iso, ts_epoch, dns_ms, tcp_ms, tls_ms, http_code, status "
+              "FROM reach WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
+              "ORDER BY ts_epoch",
+              ["ts_iso", "ts_epoch", "dns_ms", "tcp_ms", "tls_ms", "http_code", "status"]),
+    "speed": ("SELECT ts_iso, ts_epoch, down_mbps, up_mbps, bytes, seconds, "
+              "http_code, idle_rtt_ms, loaded_rtt_ms FROM speed "
+              "WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? ORDER BY ts_epoch",
+              ["ts_iso", "ts_epoch", "down_mbps", "up_mbps", "bytes", "seconds",
+               "http_code", "idle_rtt_ms", "loaded_rtt_ms"]),
+}
+
+
+@router.get("/net/{name}/export.csv")
+def net_export(request: Request, name: str, kind: str, t0: float, t1: float):
+    """The visible range as CSV — raw rows for latency/reach/speed, derived
+    events for kind=events. Streams, so a year of pings won't buffer in RAM."""
+    cfg = request.app.state.cfg
+    conn = _open(request)
+    try:
+        net_id = _net_id(conn, name)
+        if kind == "events":
+            events = merge_events(
+                derive_events(conn, net_id, t0, t1, cfg.ping_interval),
+                derive_reach_events(conn, net_id, t0, t1, cfg.alert_reach_fails))
+    finally:
+        conn.close()
+    if kind != "events" and kind not in EXPORT_KINDS:
+        raise HTTPException(400, f"Unknown export kind: {kind}")
+
+    def fmt_day(t: float) -> str:
+        return datetime.datetime.fromtimestamp(t).strftime("%Y%m%d")
+
+    filename = f"netmon-{name}-{kind}-{fmt_day(t0)}-{fmt_day(t1)}.csv"
+
+    def stream():
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        if kind == "events":
+            w.writerow(["start_iso", "end_iso", "duration_s", "scope", "note"])
+            for e in events:
+                d = e.as_dict()
+                w.writerow([d["start"], d["end"], d["dur"], d["scope"], d["note"]])
+            yield buf.getvalue()
+            return
+        sql, cols = EXPORT_KINDS[kind]
+        w.writerow(cols)
+        c = connect(cfg.db_path)  # own connection — outlives the request handler
+        try:
+            for i, row in enumerate(c.execute(sql, (net_id, t0, t1))):
+                w.writerow([row[col] for col in cols])
+                if i % 2000 == 1999:  # flush in chunks, not per row
+                    yield buf.getvalue()
+                    buf.seek(0)
+                    buf.truncate(0)
+            yield buf.getvalue()
+        finally:
+            c.close()
+
+    return StreamingResponse(stream(), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition":
+                                      f'attachment; filename="{filename}"'})
 
 
 class DescriptionIn(BaseModel):

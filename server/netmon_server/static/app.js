@@ -1157,9 +1157,27 @@ async function runSpeedTest() {
   setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 6000);
 }
 
+function initExportMenu() {
+  const menu = document.getElementById('exportMenu');
+  if (!menu) return;
+  const build = () => {
+    const p = window.PAGE;
+    menu.querySelectorAll('.exportlist a').forEach(a => {
+      a.href = `/api/net/${p.name}/export.csv?kind=${a.dataset.kind}&t0=${p.t0}&t1=${p.t1}`;
+    });
+  };
+  build();
+  // rebuild on open so live-refreshed ranges export what's on screen
+  menu.addEventListener('toggle', () => { if (menu.open) build(); });
+  document.addEventListener('click', e => {
+    if (menu.open && !menu.contains(e.target)) menu.open = false;
+  });
+}
+
 function netmonInit() {
   initNoteForm();
   initNetDesc();
+  initExportMenu();
   checkForUpdate();
   document.getElementById('shareRange')?.addEventListener('click', shareRange);
   document.getElementById('runSpeed')?.addEventListener('click', runSpeedTest);
