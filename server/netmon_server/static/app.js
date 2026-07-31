@@ -460,7 +460,7 @@ function renderCards(sum) {
   if (p) {
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
-        <h3>🌍 public IP</h3>
+        <h3>Public IP 🌍</h3>
         <div class="big" style="font-size:20px">${p.ip}</div>
         <div class="metric"><span>ISP (rDNS)</span><span class="v" style="overflow-wrap:anywhere;text-align:right">${p.ptr || '—'}</span></div>
         <div class="metric"><span>Since</span><span class="v">${fmtIso(p.since)}</span></div>
@@ -932,7 +932,7 @@ async function pageDashboard() {
         <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' ⬇' + (s.speed.up_last != null ? ' / ' + s.speed.up_last.toFixed(0) + ' ⬆' : '') + ' Mbit/s' : '—'}</span></div>
         <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
         <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
-        ${s.pubip && s.pubip.current ? `<div class="metric"><span>🌍 public IP</span><span class="v"${s.pubip.current.ptr ? ` title="${esc(s.pubip.current.ptr)}"` : ''}>${esc(s.pubip.current.ip)}</span></div>` : ''}
+        ${s.pubip && s.pubip.current ? `<div class="metric"><span>Public IP 🌍</span><span class="v"${s.pubip.current.ptr ? ` title="${esc(s.pubip.current.ptr)}"` : ''}>${esc(s.pubip.current.ip)}</span></div>` : ''}
         ${n.monitor_version ? `<div class="metric"><span>Monitor</span>${
           n.monitor_version === window.NETMON_VERSION
             ? `<span class="v" style="color:var(--mut)">v${n.monitor_version}</span>`
