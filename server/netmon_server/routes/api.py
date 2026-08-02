@@ -75,6 +75,33 @@ def networks(request: Request):
         conn.close()
 
 
+@router.get("/monitors/health")
+def monitors_health(request: Request):
+    """Light sync status per network — feeds the global unhealthy-monitor
+    banner on every page, so it skips the expensive daily summaries."""
+    cfg = request.app.state.cfg
+    conn = _open(request)
+    try:
+        out = []
+        for net in conn.execute("SELECT id, name, label FROM networks "
+                                "ORDER BY name").fetchall():
+            st = conn.execute("SELECT * FROM sync_status WHERE network_id=?",
+                              (net["id"],)).fetchone()
+            last_ok = st["last_ok_at"] if st else None
+            out.append({
+                "name": net["name"],
+                "label": net["label"],
+                "configured": any(m.name == net["name"] for m in cfg.monitors),
+                "online": bool(last_ok and time.time() - last_ok < OFFLINE_AFTER),
+                "last_ok_at": last_ok,
+                "last_error": st["last_error"] if st else None,
+                "consecutive_failures": st["consecutive_failures"] if st else 0,
+            })
+        return out
+    finally:
+        conn.close()
+
+
 @router.get("/net/{name}/summary")
 def net_summary(request: Request, name: str, t0: float, t1: float):
     cfg = request.app.state.cfg

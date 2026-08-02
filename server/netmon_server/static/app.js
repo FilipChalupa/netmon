@@ -1269,3 +1269,25 @@ function netmonInit() {
       `<div class="panel" style="border-color:var(--bad)">Failed to load data: ${err.message}</div>`);
   });
 }
+
+/* ---------- global banner: unreachable monitors, visible on every page ---------- */
+
+async function renderSickbar() {
+  const el = document.getElementById('sickbar');
+  if (!el) return;
+  try {
+    const mons = await getJSON('/api/monitors/health');
+    const sick = mons.filter(m => m.configured && !m.online);
+    el.innerHTML = sick.map(m => {
+      const ago = m.last_ok_at
+        ? fmtDur(Date.now() / 1000 - m.last_ok_at) + ' ago' : 'never';
+      const fails = m.consecutive_failures ? ` after ${m.consecutive_failures} attempts` : '';
+      const err = m.last_error
+        ? ` · <span class="err" title="${esc(m.last_error)}">${esc(m.last_error.slice(0, 120))}</span>` : '';
+      return `<div class="sick">⚠ <a href="/net/${m.name}">${esc(m.label)}</a>: ` +
+             `monitor unreachable${fails} · last sync OK ${ago}${err}</div>`;
+    }).join('');
+  } catch (e) { /* the banner must never break a page */ }
+}
+renderSickbar();
+setInterval(renderSickbar, 120000);
