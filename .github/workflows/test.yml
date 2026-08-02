@@ -13,7 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r server/requirements.txt pytest playwright
+      - run: pip install -r server/requirements.lock  # pinned — same set as the Docker image
+      - run: pip install pytest playwright
       - run: playwright install --with-deps chromium
       - name: Run tests
         shell: bash
@@ -22,3 +23,10 @@ jobs:
         if: failure()
         shell: bash
         run: grep -aE "FAILED|ERROR|Error|assert" pytest.log | head -20 | while read -r line; do echo "::error::${line}"; done
+
+  docker:
+    # catches broken builds before Coolify does (the mcp 2.0 incident)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build server

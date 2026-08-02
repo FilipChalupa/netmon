@@ -1,0 +1,13 @@
+# Dependency bumps arrive as PRs and go through CI (pytest + docker build)
+# instead of surprising us at deploy time. After merging a requirements.txt
+# bump, run server/lock.sh to refresh requirements.lock.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /server
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
