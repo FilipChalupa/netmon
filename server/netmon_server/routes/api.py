@@ -87,8 +87,9 @@ def db_stats(request: Request):
     conn = _open(request)
     try:
         kinds = {}
-        for kind in KINDS:
-            row = conn.execute(f"SELECT COUNT(*) AS n, MIN(ts_epoch) AS oldest "
+        for kind, ts_col in [(k, "ts_epoch") for k in KINDS] + \
+                            [("latency_hourly", "hour")]:
+            row = conn.execute(f"SELECT COUNT(*) AS n, MIN({ts_col}) AS oldest "
                                f"FROM {kind}").fetchone()
             kinds[kind] = {"rows": row["n"], "oldest": row["oldest"]}
     finally:

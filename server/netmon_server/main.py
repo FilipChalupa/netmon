@@ -22,6 +22,7 @@ from .db import init_db
 from .mcp_server import mcp
 from .report import report_scheduler
 from .retention import retention_loop
+from .rollup import backfill_all
 from .routes import api, pages
 from .sync import sync_forever
 
@@ -43,6 +44,9 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(report_scheduler(cfg, stop), name="report"),
         asyncio.create_task(alert_loop(cfg, stop), name="alerts"),
         asyncio.create_task(retention_loop(cfg, stop), name="retention"),
+        # one-shot: builds missing latency rollups; charts fall back to raw
+        # scans for a network until its backfill finishes
+        asyncio.create_task(asyncio.to_thread(backfill_all, cfg), name="rollup"),
     ]
     try:
         async with mcp.session_manager.run():

@@ -101,6 +101,31 @@ CREATE TABLE IF NOT EXISTS diag(
 );
 CREATE INDEX IF NOT EXISTS idx_diag_net_ts ON diag(network_id, ts_epoch);
 
+-- Hourly latency rollups (see rollup.py): long-range charts and the heatmap
+-- read these instead of scanning millions of raw pings. Never pruned by
+-- retention, so the long view survives NETMON_RETENTION_DAYS.
+CREATE TABLE IF NOT EXISTS latency_hourly(
+    network_id INTEGER NOT NULL REFERENCES networks(id),
+    target TEXT NOT NULL,
+    hour INTEGER NOT NULL,
+    samples INTEGER NOT NULL,
+    lost INTEGER NOT NULL,
+    rtt_n INTEGER NOT NULL,
+    rtt_sum REAL,
+    rtt_min REAL,
+    rtt_max REAL,
+    PRIMARY KEY(network_id, target, hour)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_lath_net_hour ON latency_hourly(network_id, hour);
+
+-- ready=1 once a network's rollup backfill finished; aggregates fall back
+-- to raw scans until then
+CREATE TABLE IF NOT EXISTS rollup_state(
+    network_id INTEGER PRIMARY KEY REFERENCES networks(id),
+    ready INTEGER NOT NULL DEFAULT 0,
+    updated_at REAL
+);
+
 CREATE TABLE IF NOT EXISTS sync_cursor(
     network_id INTEGER NOT NULL,
     kind TEXT NOT NULL,

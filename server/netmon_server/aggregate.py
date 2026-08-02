@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from .events import (PUBLIC_TARGETS, derive_events, derive_reach_events,
                      events_summary, merge_events)
+from .rollup import is_ready as rollup_ready
 
 UPTIME_GAP_THRESHOLD = 150  # s; a heartbeat gap longer than this = measuring wasn't running
 MAX_POINTS = 1500
@@ -24,19 +25,36 @@ MAX_POINTS = 1500
 def pick_bucket(t0: float, t1: float) -> int:
     span = max(t1 - t0, 60)
     b = int(span / MAX_POINTS // 60 + 1) * 60
-    return max(b, 60)
+    b = max(b, 60)
+    if b > 1500:  # a month and up snaps to whole hours so rollups serve it
+        b = (b + 3599) // 3600 * 3600
+    return b
 
 
 def latency_series(conn: sqlite3.Connection, network_id: int,
                    t0: float, t1: float, bucket: int) -> dict:
     """Latency (avg) and loss (%) per target per bucket. AVG ignores the NULL rtt of LOSS rows."""
-    rows = conn.execute(
-        "SELECT CAST(ts_epoch/:b AS INT)*:b AS bucket, target, "
-        "       AVG(rtt_ms) AS rtt, 100.0*SUM(status='LOSS')/COUNT(*) AS loss "
-        "FROM latency WHERE network_id=:net AND ts_epoch>=:t0 AND ts_epoch<=:t1 "
-        "GROUP BY bucket, target ORDER BY bucket",
-        {"b": bucket, "net": network_id, "t0": t0, "t1": t1},
-    ).fetchall()
+    if bucket % 3600 == 0 and rollup_ready(conn, network_id):
+        # hour-aligned buckets come from the rollup — thousands of rows
+        # instead of millions, and they survive raw-data retention
+        rows = conn.execute(
+            "SELECT CAST(hour/:b AS INT)*:b AS bucket, target, "
+            "       SUM(rtt_sum)/NULLIF(SUM(rtt_n), 0) AS rtt, "
+            "       100.0*SUM(lost)/SUM(samples) AS loss "
+            "FROM latency_hourly "
+            "WHERE network_id=:net AND hour>=:h0 AND hour<=:t1 "
+            "GROUP BY bucket, target ORDER BY bucket",
+            {"b": bucket, "net": network_id,
+             "h0": int(t0 // 3600) * 3600, "t1": t1},
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT CAST(ts_epoch/:b AS INT)*:b AS bucket, target, "
+            "       AVG(rtt_ms) AS rtt, 100.0*SUM(status='LOSS')/COUNT(*) AS loss "
+            "FROM latency WHERE network_id=:net AND ts_epoch>=:t0 AND ts_epoch<=:t1 "
+            "GROUP BY bucket, target ORDER BY bucket",
+            {"b": bucket, "net": network_id, "t0": t0, "t1": t1},
+        ).fetchall()
     buckets: list[int] = []
     index: dict[int, int] = {}
     targets: dict[str, dict] = {}
@@ -179,13 +197,21 @@ def daily_heatmap(conn: sqlite3.Connection, network_id: int, tz_name: str,
     t1 = datetime.datetime.combine(end_day + datetime.timedelta(days=1),
                                    datetime.time.min, tz).timestamp()
     marks = ", ".join("?" * len(public_targets))
-    rows = conn.execute(
-        f"SELECT CAST(ts_epoch/3600 AS INT)*3600 AS hour, COUNT(*) AS n, "
-        f"       SUM(status='LOSS') AS lost "
-        f"FROM latency WHERE network_id=? AND ts_epoch>=? AND ts_epoch<? "
-        f"AND target IN ({marks}) GROUP BY hour",
-        (network_id, t0, t1, *public_targets),
-    ).fetchall()
+    if rollup_ready(conn, network_id):
+        rows = conn.execute(
+            f"SELECT hour, SUM(samples) AS n, SUM(lost) AS lost "
+            f"FROM latency_hourly WHERE network_id=? AND hour>=? AND hour<? "
+            f"AND target IN ({marks}) GROUP BY hour",
+            (network_id, t0, t1, *public_targets),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"SELECT CAST(ts_epoch/3600 AS INT)*3600 AS hour, COUNT(*) AS n, "
+            f"       SUM(status='LOSS') AS lost "
+            f"FROM latency WHERE network_id=? AND ts_epoch>=? AND ts_epoch<? "
+            f"AND target IN ({marks}) GROUP BY hour",
+            (network_id, t0, t1, *public_targets),
+        ).fetchall()
     agg: dict[datetime.date, list[int]] = {}
     for r in rows:
         d = datetime.datetime.fromtimestamp(r["hour"], tz).date()
@@ -241,14 +267,27 @@ def summary(conn: sqlite3.Connection, network_id: int,
             t0: float, t1: float, ping_interval: float = 2.0,
             reach_min_fails: int = 10) -> dict:
     """Summary for cards: per-target samples/loss/latency, speed, coverage, outages."""
-    target_rows = conn.execute(
-        "SELECT target, COUNT(*) AS samples, "
-        "       100.0*SUM(status='LOSS')/COUNT(*) AS loss, "
-        "       AVG(rtt_ms) AS avg, MIN(rtt_ms) AS min, MAX(rtt_ms) AS max "
-        "FROM latency WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
-        "GROUP BY target ORDER BY target",
-        (network_id, t0, t1),
-    ).fetchall()
+    if t1 - t0 >= 2 * 86400 and rollup_ready(conn, network_id):
+        # long ranges: same numbers from the hourly rollup (edge hours may
+        # include a few pre-t0 minutes — invisible at this zoom level)
+        target_rows = conn.execute(
+            "SELECT target, SUM(samples) AS samples, "
+            "       100.0*SUM(lost)/SUM(samples) AS loss, "
+            "       SUM(rtt_sum)/NULLIF(SUM(rtt_n), 0) AS avg, "
+            "       MIN(rtt_min) AS min, MAX(rtt_max) AS max "
+            "FROM latency_hourly WHERE network_id=? AND hour>=? AND hour<=? "
+            "GROUP BY target ORDER BY target",
+            (network_id, int(t0 // 3600) * 3600, t1),
+        ).fetchall()
+    else:
+        target_rows = conn.execute(
+            "SELECT target, COUNT(*) AS samples, "
+            "       100.0*SUM(status='LOSS')/COUNT(*) AS loss, "
+            "       AVG(rtt_ms) AS avg, MIN(rtt_ms) AS min, MAX(rtt_ms) AS max "
+            "FROM latency WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=? "
+            "GROUP BY target ORDER BY target",
+            (network_id, t0, t1),
+        ).fetchall()
     targets = [{
         "target": r["target"],
         "samples": r["samples"],
@@ -280,12 +319,15 @@ def summary(conn: sqlite3.Connection, network_id: int,
         derive_events(conn, network_id, t0, t1, ping_interval),
         derive_reach_events(conn, network_id, t0, t1, reach_min_fails))
 
-    meta = conn.execute(
-        "SELECT MIN(ts_epoch) AS first, MAX(ts_epoch) AS last, "
-        "       MIN(ts_iso) AS first_iso, MAX(ts_iso) AS last_iso "
-        "FROM latency WHERE network_id=? AND ts_epoch>=? AND ts_epoch<=?",
-        (network_id, t0, t1),
-    ).fetchone()
+    # two indexed LIMIT-1 seeks — MIN/MAX over ts_iso would scan the range
+    first = conn.execute(
+        "SELECT ts_iso FROM latency WHERE network_id=? AND ts_epoch>=? "
+        "AND ts_epoch<=? ORDER BY ts_epoch LIMIT 1",
+        (network_id, t0, t1)).fetchone()
+    last = conn.execute(
+        "SELECT ts_iso FROM latency WHERE network_id=? AND ts_epoch>=? "
+        "AND ts_epoch<=? ORDER BY ts_epoch DESC LIMIT 1",
+        (network_id, t0, t1)).fetchone()
 
     return {
         "targets": targets,
@@ -308,5 +350,6 @@ def summary(conn: sqlite3.Connection, network_id: int,
         "events": attach_diags(conn, network_id,
                                [e.as_dict() for e in events], t0, t1),
         "events_summary": events_summary(events),
-        "period": {"first": meta["first_iso"], "last": meta["last_iso"]},
+        "period": {"first": first["ts_iso"] if first else None,
+                   "last": last["ts_iso"] if last else None},
     }

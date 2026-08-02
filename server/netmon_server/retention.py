@@ -1,11 +1,13 @@
-"""Retention — optional pruning of high-volume measurement rows.
+"""Retention — pruning of high-volume raw measurement rows.
 
-NETMON_RETENTION_DAYS=0 (default) keeps everything. When set, rows of
-the high-volume kinds (latency, reach, diag) older than the cutoff are
-deleted once a day in small batches so sync writes are never blocked
-for long. speed, pubip and uptime rows are tiny and always kept — they
-carry the long-term story. SQLite reuses the freed pages, so the file
-stops growing; run VACUUM manually if you also want it to shrink.
+Rows of the high-volume kinds (latency, reach, diag) older than
+NETMON_RETENTION_DAYS (default 90; 0 keeps everything) are deleted once
+a day in small batches so sync writes are never blocked for long.
+speed, pubip and uptime rows are tiny and always kept, and so are the
+hourly latency rollups (rollup.py) — long-range charts, summaries and
+the heatmap survive the pruning at hourly resolution. SQLite reuses
+the freed pages, so the file stops growing; run VACUUM manually if you
+also want it to shrink.
 """
 
 from __future__ import annotations

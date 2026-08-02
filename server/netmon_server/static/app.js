@@ -1315,7 +1315,7 @@ async function renderDbStats() {
   try {
     const st = await getJSON('/api/db/stats');
     const ret = st.retention_days
-      ? `latency / reach / diag rows older than <b>${st.retention_days} days</b> are pruned nightly`
+      ? `raw latency / reach / diag rows older than <b>${st.retention_days} days</b> are pruned nightly; hourly aggregates are kept forever`
       : 'everything is kept forever (set <code>NETMON_RETENTION_DAYS</code> to prune)';
     const rows = Object.entries(st.kinds).map(([k, v]) =>
       `<tr><td>${k}</td><td style="text-align:right">${v.rows.toLocaleString('en')}</td>` +

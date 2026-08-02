@@ -22,6 +22,7 @@ import time
 
 from .config import load_config
 from .db import connect, get_or_create_network, init_db, insert_sql
+from .rollup import rebuild_network
 
 CSV_NAMES = ("latency.csv", "reach.csv", "speed.csv", "uptime.csv")
 
@@ -176,6 +177,9 @@ def main() -> int:
         stats = import_tree(conn, network_id, args.log_root, args.force)
         print(f"Done: {stats['days']} days, {stats['files']} files, "
               f"{stats['rows']} rows (+{stats['skipped']} skipped).")
+        if stats["rows"]:
+            print("Rebuilding hourly rollups…")
+            rebuild_network(conn, network_id)
     finally:
         conn.close()
     return 0

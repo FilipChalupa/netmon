@@ -54,8 +54,10 @@ class ServerConfig:
     # many ms → alert (absolute — calls break at a fixed level). 0 disables.
     alert_bloat_ms: int = 100
 
-    # prune latency/reach/diag rows older than this many days (0 = keep all)
-    retention_days: int = 0
+    # prune raw latency/reach/diag rows older than this many days (0 = keep
+    # all). Hourly latency rollups are never pruned, so long-range charts
+    # and the heatmap keep working beyond this horizon.
+    retention_days: int = 90
 
 
 # single-mode (all-in-one binary) injects its config here instead of env/toml

@@ -14,6 +14,7 @@ import time
 
 import httpx
 
+from . import rollup
 from .config import MonitorCfg, ServerConfig
 from .db import KINDS, connect, get_or_create_network, insert_sql
 
@@ -78,6 +79,7 @@ async def pull_monitor(conn: sqlite3.Connection, client: httpx.AsyncClient,
     network_id = get_or_create_network(conn, mon.name, mon.label)
     await _record_version(conn, client, mon, network_id)
     total = 0
+    lat_span: list[float] = []   # min/max ts of pulled latency rows → rollup window
     for kind in KINDS:
         row = conn.execute(
             "SELECT last_src_id FROM sync_cursor WHERE network_id=? AND kind=?",
@@ -97,6 +99,9 @@ async def pull_monitor(conn: sqlite3.Connection, client: httpx.AsyncClient,
             rows = payload.get("rows", [])
             if not rows:
                 break
+            if kind == "latency":
+                ts = [rows[0]["ts_epoch"], rows[-1]["ts_epoch"]]
+                lat_span = [min(lat_span + ts), max(lat_span + ts)] if lat_span else ts
             last_id = payload["last_id"]
             total += await asyncio.to_thread(
                 _store_page, conn, kind, network_id, rows, last_id
@@ -104,6 +109,9 @@ async def pull_monitor(conn: sqlite3.Connection, client: httpx.AsyncClient,
             after_id = last_id
             if not payload.get("more"):
                 break
+    if lat_span:
+        await asyncio.to_thread(
+            rollup.update_hours, conn, network_id, lat_span[0], lat_span[1])
     return total
 
 
