@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import datetime
 import io
+import os
 import time
 
 import httpx
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 from .. import VERSION
 from ..aggregate import (attach_diags, daily_heatmap, latency_series, pick_bucket,
                          reach_series, speed_points, summary)
-from ..db import connect, get_network, set_network_description
+from ..db import KINDS, connect, get_network, set_network_description
 from ..events import derive_events, derive_reach_events, merge_events
 from ..notes import create_note, delete_note, list_notes, update_note
 from ..timerange import resolve_range
@@ -76,6 +77,30 @@ def networks(request: Request):
         return out
     finally:
         conn.close()
+
+
+@router.get("/db/stats")
+def db_stats(request: Request):
+    """DB size + per-kind row counts — shown on the help page so growth
+    doesn't come as a surprise."""
+    cfg = request.app.state.cfg
+    conn = _open(request)
+    try:
+        kinds = {}
+        for kind in KINDS:
+            row = conn.execute(f"SELECT COUNT(*) AS n, MIN(ts_epoch) AS oldest "
+                               f"FROM {kind}").fetchone()
+            kinds[kind] = {"rows": row["n"], "oldest": row["oldest"]}
+    finally:
+        conn.close()
+    size = 0
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            size += os.path.getsize(cfg.db_path + suffix)
+        except OSError:
+            pass
+    return {"size_bytes": size, "kinds": kinds,
+            "retention_days": cfg.retention_days}
 
 
 @router.get("/monitors/health")

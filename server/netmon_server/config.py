@@ -54,6 +54,9 @@ class ServerConfig:
     # many ms → alert (absolute — calls break at a fixed level). 0 disables.
     alert_bloat_ms: int = 100
 
+    # prune latency/reach/diag rows older than this many days (0 = keep all)
+    retention_days: int = 0
+
 
 # single-mode (all-in-one binary) injects its config here instead of env/toml
 _override: ServerConfig | None = None
@@ -84,6 +87,8 @@ def load_config() -> ServerConfig:
                                            ServerConfig.alert_speed_pct)),
         alert_bloat_ms=int(os.environ.get("NETMON_ALERT_BLOAT_MS",
                                           ServerConfig.alert_bloat_ms)),
+        retention_days=int(os.environ.get("NETMON_RETENTION_DAYS",
+                                          ServerConfig.retention_days)),
     )
     if os.path.exists(cfg.monitors_path):
         with open(cfg.monitors_path, "rb") as f:

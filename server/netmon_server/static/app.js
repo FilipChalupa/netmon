@@ -1303,3 +1303,28 @@ async function renderSickbar() {
 }
 renderSickbar();
 setInterval(renderSickbar, 120000);
+
+/* ---------- DB stats on the help page ---------- */
+
+async function renderDbStats() {
+  const el = document.getElementById('dbstats');
+  if (!el) return;
+  const fmtBytes = b => b >= 1 << 30 ? (b / (1 << 30)).toFixed(2) + ' GB'
+                      : b >= 1 << 20 ? (b / (1 << 20)).toFixed(1) + ' MB'
+                      : (b / 1024).toFixed(0) + ' kB';
+  try {
+    const st = await getJSON('/api/db/stats');
+    const ret = st.retention_days
+      ? `latency / reach / diag rows older than <b>${st.retention_days} days</b> are pruned nightly`
+      : 'everything is kept forever (set <code>NETMON_RETENTION_DAYS</code> to prune)';
+    const rows = Object.entries(st.kinds).map(([k, v]) =>
+      `<tr><td>${k}</td><td style="text-align:right">${v.rows.toLocaleString('en')}</td>` +
+      `<td>${v.oldest ? fmtTs(v.oldest, true) : '—'}</td></tr>`).join('');
+    el.innerHTML = `<p>Database file: <b>${fmtBytes(st.size_bytes)}</b> · ${ret}.</p>` +
+      `<table class="evt"><thead><tr><th>kind</th><th style="text-align:right">rows</th>` +
+      `<th>oldest record</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    el.innerHTML = '<p class="empty">Stats unavailable.</p>';
+  }
+}
+renderDbStats();
