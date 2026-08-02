@@ -1,6 +1,6 @@
 # Human-edited ranges. Docker and CI install from requirements.lock —
 # after any change here run ./lock.sh and commit both files.
-fastapi>=0.111
+fastapi>=0.141.1
 uvicorn[standard]>=0.30
 jinja2>=3.1
 httpx>=0.27
