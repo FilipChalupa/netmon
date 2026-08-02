@@ -2,7 +2,7 @@
 # after any change here run ./lock.sh and commit both files.
 fastapi>=0.111
 uvicorn[standard]>=0.30
-jinja2>=3.1
+jinja2>=3.1.6
 httpx>=0.27
 mcp>=1.9,<2   # 2.0 removed mcp.server.fastmcp
 tzdata>=2024.1   # Windows has no system tz database; harmless elsewhere
