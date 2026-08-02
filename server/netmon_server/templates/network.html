@@ -48,7 +48,7 @@
 {% block scripts %}
 <script>
 window.PAGE = {type: 'network', name: {{ net.name | tojson }}, t0: {{ t0 }}, t1: {{ t1 }},
-               range: {{ range | tojson }},
+               range: {{ range | tojson }}, plan: {{ plan | tojson }},
                description: {{ (net.description or '') | tojson }}};
 netmonInit();
 </script>

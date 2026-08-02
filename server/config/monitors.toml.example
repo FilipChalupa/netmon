@@ -9,6 +9,8 @@ name = "home"                     # must match 'network' in monitor.ini
 label = "Home"
 url = "http://100.64.0.1:8787"    # Tailscale IP or MagicDNS name of the monitor
 token = "secret-token"            # same as 'token' in monitor.ini
+plan_down = 1000                  # optional: contracted speed (Mbit/s) — the UI
+plan_up = 100                     # then shows measured speeds as % of the plan
 
 [[monitors]]
 name = "cottage"

@@ -436,11 +436,23 @@ function renderCards(sum) {
         <div class="metric"><span>⬆ min / max</span><span class="v">${sum.speed.up_min.toFixed(0)} / ${sum.speed.up_max.toFixed(0)}</span></div>` : '';
     const bloat = sum.speed.bloat_avg != null ? `
         <div class="metric"><span>bufferbloat avg</span><span class="pill ${sum.speed.bloat_avg > 100 ? 'bad' : sum.speed.bloat_avg > 30 ? 'warn' : 'ok'}">+${sum.speed.bloat_avg.toFixed(0)} ms</span></div>` : '';
+    // contracted plan (optional, from monitors.toml): show avg as % of it
+    const plan = window.PAGE && window.PAGE.plan;
+    const pctPill = p => `<span class="pill ${p >= 80 ? 'ok' : p >= 50 ? 'warn' : 'bad'}">${p.toFixed(0)} %</span>`;
+    let planRows = '';
+    if (plan) {
+      planRows = `
+        <div class="metric"><span>plan ⬇ / ⬆</span><span class="v">${plan.down ? plan.down.toFixed(0) : '—'} / ${plan.up ? plan.up.toFixed(0) : '—'} Mbit/s</span></div>`;
+      if (plan.down) planRows += `
+        <div class="metric"><span>⬇ avg of plan</span>${pctPill(sum.speed.avg / plan.down * 100)}</div>`;
+      if (plan.up && sum.speed.up_avg != null) planRows += `
+        <div class="metric"><span>⬆ avg of plan</span>${pctPill(sum.speed.up_avg / plan.up * 100)}</div>`;
+    }
     el.insertAdjacentHTML('beforeend', `
       <div class="card">
         <h3>speed ⬇⬆</h3>
         <div class="big">${sum.speed.avg.toFixed(0)} <span style="font-size:14px;color:var(--mut)">Mbit/s ⬇ avg</span></div>
-        <div class="metric"><span>⬇ min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>${up}${bloat}
+        <div class="metric"><span>⬇ min / max</span><span class="v">${sum.speed.min.toFixed(0)} / ${sum.speed.max.toFixed(0)}</span></div>${up}${bloat}${planRows}
         <div class="metric"><span>tests</span><span class="v">${sum.speed.n}</span></div>
       </div>`);
   }
@@ -951,7 +963,7 @@ async function pageDashboard() {
         <h3>${n.label} ${statePill}</h3>
         <div class="metric"><span>Loss (internet)</span><span class="pill ${lossCls(worstLoss)}">${worstLoss.toFixed(2)}%</span></div>
         <div class="metric"><span>Latency avg</span><span class="v">${pub && pub.avg != null ? pub.avg.toFixed(1) + ' ms' : '—'}</span></div>
-        <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' ⬇' + (s.speed.up_last != null ? ' / ' + s.speed.up_last.toFixed(0) + ' ⬆' : '') + ' Mbit/s' : '—'}</span></div>
+        <div class="metric"${n.plan ? ` title="plan ${n.plan.down || '—'} ⬇ / ${n.plan.up || '—'} ⬆ Mbit/s"` : ''}><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' ⬇' + (s.speed.up_last != null ? ' / ' + s.speed.up_last.toFixed(0) + ' ⬆' : '') + ' Mbit/s' + (n.plan && n.plan.down ? ` <span style="color:var(--mut);font-weight:400">· ${(s.speed.last / n.plan.down * 100).toFixed(0)} % of plan</span>` : '') : '—'}</span></div>
         <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
         <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
         ${syncRow}

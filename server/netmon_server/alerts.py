@@ -185,12 +185,17 @@ def _check_speed(conn: sqlite3.Connection, cfg: ServerConfig, net, now: float) -
         recovered = pct >= min(cfg.alert_speed_pct + 20, 90)
         alerted = _already_sent(conn, net["id"], kind, "state")
         if degraded and not alerted:
+            mon = next((m for m in cfg.monitors if m.name == net["name"]), None)
+            plan = (mon.plan_down if col == "down_mbps" else mon.plan_up) if mon else 0
+            plan_line = (f"Contracted plan: {plan:.0f} Mbit/s "
+                         f"({cur / plan * 100:.0f}% of plan)\n") if plan else ""
             subject = (f"netmon ALERT: {label} speed degraded on {net['label']} "
                        f"({cur:.0f} Mbit/s, {pct:.0f}% of usual)")
             body = (f"Network: {net['label']} ({net['name']})\n\n"
                     f"Median {label} of the last {len(recent)} speed tests: "
                     f"{cur:.0f} Mbit/s\n"
                     f"30-day baseline median: {base:.0f} Mbit/s\n"
+                    f"{plan_line}"
                     f"That is {pct:.0f}% of the usual speed "
                     f"(alert threshold {cfg.alert_speed_pct}%).\n\n"
                     f"A recovery email follows once the speed is back.")

@@ -56,11 +56,14 @@ def networks(request: Request):
             last_ok = st["last_ok_at"] if st else None
             s = summary(conn, net["id"], t0, t1, cfg.ping_interval,
                         cfg.alert_reach_fails)
+            mon = next((m for m in cfg.monitors if m.name == net["name"]), None)
             out.append({
                 "name": net["name"],
                 "label": net["label"],
                 "description": net["description"],
                 "monitor_version": net["monitor_version"],
+                "plan": {"down": mon.plan_down or None, "up": mon.plan_up or None}
+                        if mon and (mon.plan_down or mon.plan_up) else None,
                 "sync": {
                     "last_ok_at": last_ok,
                     "last_error": st["last_error"] if st else None,

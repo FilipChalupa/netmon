@@ -96,7 +96,12 @@ def network_detail(request: Request, name: str, range: str = "day", date: str | 
         nets = _networks(conn)
     finally:
         conn.close()
-    ctx = {"net": dict(net), "networks": [dict(n) for n in nets], "extra_qs": ""}
+    cfg = request.app.state.cfg
+    mon = next((m for m in cfg.monitors if m.name == name), None)
+    plan = ({"down": mon.plan_down or None, "up": mon.plan_up or None}
+            if mon and (mon.plan_down or mon.plan_up) else None)
+    ctx = {"net": dict(net), "networks": [dict(n) for n in nets],
+           "plan": plan, "extra_qs": ""}
     ctx.update(_range_ctx(request, range, date, from_, to))
     return templates.TemplateResponse(request, "network.html", ctx)
 

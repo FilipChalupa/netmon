@@ -17,6 +17,8 @@ class MonitorCfg:
     url: str
     label: str = ""
     token: str = ""
+    plan_down: float = 0.0   # contracted speed in Mbit/s; 0 = not configured
+    plan_up: float = 0.0
 
     def __post_init__(self):
         self.url = self.url.rstrip("/")
@@ -93,5 +95,7 @@ def load_config() -> ServerConfig:
                 url=m["url"],
                 label=m.get("label", ""),
                 token=m.get("token", ""),
+                plan_down=float(m.get("plan_down", 0)),
+                plan_up=float(m.get("plan_up", 0)),
             ))
     return cfg
