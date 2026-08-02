@@ -913,16 +913,38 @@ async function pageDashboard() {
     const pub = s.targets.find(t => t.target === 'google') ||
                 s.targets.find(t => PUBLIC_TARGETS.includes(t.target));
     let statePill;
-    if (!s.targets.length) {
-      statePill = '<span class="pill mutpill">no data today</span>';
-    } else if (n.sync.configured && !n.sync.online) {
+    if (n.sync.configured && !n.sync.online) {
       statePill = '<span class="pill mutpill">monitor unreachable</span>';
+    } else if (!s.targets.length) {
+      statePill = '<span class="pill mutpill">no data today</span>';
     } else if ((gw && gw.loss > 1) || worstLoss > 1 || s.events.length) {
       statePill = '<span class="pill bad">outages</span>';
     } else if (worstLoss > 0.1) {
       statePill = '<span class="pill warn">minor loss</span>';
     } else {
       statePill = '<span class="pill ok">OK</span>';
+    }
+    // diagnostic row: why a monitor is silent (unreachable / not configured / no rows)
+    const errStyle = 'max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right';
+    let syncRow = '';
+    if (n.sync.configured && !n.sync.online) {
+      const ago = n.sync.last_ok_at
+        ? fmtDur(Date.now() / 1000 - n.sync.last_ok_at) + ' ago' : 'never';
+      const fails = n.sync.consecutive_failures ? ` (${n.sync.consecutive_failures}× in a row)` : '';
+      syncRow = `<div class="metric"><span>Last sync OK</span><span class="v">${ago}</span></div>` +
+        (n.sync.last_error ? `<div class="metric"><span>Sync error</span>` +
+          `<span class="v" style="${errStyle};color:var(--bad)" title="${esc(n.sync.last_error)}${fails}">` +
+          `${esc(n.sync.last_error)}</span></div>` : '');
+    } else if (!n.sync.configured && !s.targets.length) {
+      syncRow = `<div class="metric"><span>Sync</span>` +
+        `<span class="v" style="${errStyle};color:var(--warn)" ` +
+        `title="monitors.toml has no [[monitors]] entry named '${esc(n.name)}' — data is not being pulled. ` +
+        `A renamed entry leaves the old network behind like this.">not in monitors.toml</span></div>`;
+    } else if (!s.targets.length) {
+      syncRow = `<div class="metric"><span>Sync</span>` +
+        `<span class="v" style="${errStyle}" ` +
+        `title="Sync works, but the monitor delivered no measurements today — ` +
+        `check the netmon-monitor service and clock on the monitor host.">OK — monitor sends no data</span></div>`;
     }
     el.insertAdjacentHTML('beforeend', `
       <a class="card cardlink" href="/net/${n.name}" aria-label="Open ${n.label}">
@@ -932,6 +954,7 @@ async function pageDashboard() {
         <div class="metric"><span>Last speed</span><span class="v">${s.speed.last != null ? s.speed.last.toFixed(0) + ' ⬇' + (s.speed.up_last != null ? ' / ' + s.speed.up_last.toFixed(0) + ' ⬆' : '') + ' Mbit/s' : '—'}</span></div>
         <div class="metric"><span>Coverage today</span><span class="v">${s.uptime.coverage != null ? s.uptime.coverage.toFixed(1) + ' %' : '—'}</span></div>
         <div class="metric"><span>Outages today</span><span class="v">${s.events.length}×</span></div>
+        ${syncRow}
         ${s.pubip && s.pubip.current ? `<div class="metric"><span>Public IP 🌍</span><span class="v"${s.pubip.current.ptr ? ` title="${esc(s.pubip.current.ptr)}"` : ''}>${esc(s.pubip.current.ip)}</span></div>` : ''}
         ${n.monitor_version ? `<div class="metric"><span>Monitor</span>${
           n.monitor_version === window.NETMON_VERSION
